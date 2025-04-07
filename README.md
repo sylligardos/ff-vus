@@ -1,7 +1,3 @@
-Absolutely! Here’s a more complete and professional version of your README, while keeping your fun tone intact:
-
----
-
 # FF-VUS
 
 **FF-VUS (Furiously Fast Volume Under Surface)** is a lightning-fast implementation of the next-generation metric for **time series anomaly detection**: **VUS-PR** — *Volume Under the Precision-Recall Surface*. This metric provides a more comprehensive view of detection performance, especially suited for tasks with **imprecise anomaly boundaries** and **gradual transitions**.
