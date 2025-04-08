@@ -42,8 +42,7 @@ def main(testing):
     conf_matrix = 'dynamic'     # ['trivial', 'dynamic', 'dynamic_plus']          
     interpolation = 'stepwise'  # ['linear', 'stepwise']
     metric = 'vus_pr'           # ['vus_pr', 'vus_roc', 'all']
-    compare = True
-
+    
     vus_numpy = VUSNumpy(
         slope_size=slope_size, 
         step=step, 
@@ -80,21 +79,20 @@ def main(testing):
                 'FF-VUS time': ff_vus_time,
             })
 
-            if compare:
-                tic = time.time()
-                repo_metrics, repo_existence = get_metrics(score, label, metric='vus', version='opt', slidingWindow=slope_size, thre=-1)
-                vus_time = time.time() - tic
-                vus_pr = repo_metrics['VUS_PR']
-                curr_result.update({
-                    'VUS-PR': vus_pr,
-                    'VUS time': vus_time,
-                })
-                print(f"{(ff_vus_pr - vus_pr)}, {(vus_time/ff_vus_time):.2f}")
-                # print(f"({i}, {j}) AUC-PR: {auc_pr:.5f}, FF AUC-PR: {ff_auc_pr:.5f}, Diff.: {abs(auc_pr - ff_auc_pr)}, VUS-PR: {vus_pr:.5f}, FF VUS-PR: {ff_vus_pr:.5f}, Diff.: {abs(vus_pr - ff_vus_pr)}, AUC Slow down: {(ff_vus_time / auc_pr_time):.2f}, VUS Speed up: {(vus_time / ff_vus_time):.2f}, Length: {y[i].shape[0]}")
-                # print(f"({i}, {j}) AUC-PR: {auc_pr:.5f}, FF AUC-PR: {ff_auc_pr:.5f}, Diff.: {abs(auc_pr - ff_auc_pr)}, VUS-PR: {vus_pr:.5f}, FF VUS-PR: {ff_vus_pr:.5f}, Diff.: {abs(vus_pr - ff_vus_pr)}, AUC Slow down: {(ff_vus_time / auc_pr_time):.2f}, VUS Speed up: {(vus_time / ff_vus_time):.2f}, Length: {y[i].shape[0]}")
-            else:
-                pass
-                # print(f"({i}, {j}) AUC-PR: {auc_pr:.5f}, FF AUC-PR: {ff_auc_pr:.5f}, Diff.: {abs(auc_pr - ff_auc_pr)}, AUC Slow down: {(ff_vus_time / auc_pr_time):.5f}, Length: {y[i].shape[0]}")
+            tic = time.time()
+            repo_metrics = get_metrics(score, label, metric='all', version='opt', slidingWindow=slope_size, thre=-1)
+            print(repo_metrics)
+            exit()
+            vus_time = time.time() - tic
+            vus_pr = repo_metrics['VUS_PR']
+            curr_result.update({
+                'VUS-PR': vus_pr,
+                'VUS time': vus_time,
+            })
+            print(f"{(ff_vus_pr - vus_pr)}, {(vus_time/ff_vus_time):.2f}")
+            # print(f"({i}, {j}) AUC-PR: {auc_pr:.5f}, FF AUC-PR: {ff_auc_pr:.5f}, Diff.: {abs(auc_pr - ff_auc_pr)}, VUS-PR: {vus_pr:.5f}, FF VUS-PR: {ff_vus_pr:.5f}, Diff.: {abs(vus_pr - ff_vus_pr)}, AUC Slow down: {(ff_vus_time / auc_pr_time):.2f}, VUS Speed up: {(vus_time / ff_vus_time):.2f}, Length: {y[i].shape[0]}")
+            # print(f"({i}, {j}) AUC-PR: {auc_pr:.5f}, FF AUC-PR: {ff_auc_pr:.5f}, Diff.: {abs(auc_pr - ff_auc_pr)}, VUS-PR: {vus_pr:.5f}, FF VUS-PR: {ff_vus_pr:.5f}, Diff.: {abs(vus_pr - ff_vus_pr)}, AUC Slow down: {(ff_vus_time / auc_pr_time):.2f}, VUS Speed up: {(vus_time / ff_vus_time):.2f}, Length: {y[i].shape[0]}")
+
             results.append(curr_result)
 
 

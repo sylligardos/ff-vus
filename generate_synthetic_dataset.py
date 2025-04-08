@@ -6,11 +6,8 @@
 """
 
 
-from src.utils.utils import time_it
-
 import argparse
 import numpy as np
-import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.stats import gamma
 from tqdm import tqdm
@@ -98,6 +95,7 @@ def generate_synthetic_dataset(
     ts_length=1000,
     n_anomalies=10,
     avg_anomaly_length=100,
+    plot_example=False
 ):
     if n_anomalies * avg_anomaly_length > 0.6 * ts_length:
         return None
@@ -106,7 +104,6 @@ def generate_synthetic_dataset(
     dir_path = os.path.join(f"data/synthetic/synthetic_length_{ts_length}_n_anomalies_{n_anomalies}_avg_anomaly_length_{avg_anomaly_length}")
     os.makedirs(dir_path, exist_ok=True)
     ts_template_name = f"syn_{ts_length}_{n_anomalies}_{avg_anomaly_length}"
-    ts_names = []
     
     # labels = np.zeros((n_timeseries, ts_length))
     # scores = np.zeros((n_timeseries, ts_length))
@@ -121,17 +118,18 @@ def generate_synthetic_dataset(
         toc = time.time()
 
         times[i] = toc - tic
-        ts_names.append(f"{ts_template_name}_{i}")
+        ts_name = f"{ts_template_name}_{i}"
         
         # Uncomment if you want to see the generated labels and scores
-        # fig, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
-        # ax[0].plot(labels[i])
-        # ax[1].plot(scores[i])
-        # fig.suptitle(ts_names[-1])
-        # plt.tight_layout()
-        # plt.show()
+        if plot_example:
+            fig, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
+            ax[0].plot(label)
+            ax[1].plot(score)
+            fig.suptitle(ts_name)
+            plt.tight_layout()
+            plt.show()
 
-        np.savetxt(os.path.join(dir_path, f"{ts_names[-1]}.csv"), np.vstack((label, score)).T, fmt=["%d", "%.2f"], delimiter=",")
+        np.savetxt(os.path.join(dir_path, f"{ts_name}.csv"), np.vstack((label, score)).T, fmt=["%d", "%.2f"], delimiter=",")
 
     total_time = time.time() - total_start
     total_time_min = total_time / 60

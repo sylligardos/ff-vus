@@ -317,7 +317,7 @@ def generate_curve(label,score, slidingWindow, version='opt', thre=250):
     if version =='opt_mem':
         tpr_3d, fpr_3d, prec_3d, window_3d, avg_auc_3d, avg_ap_3d = metricor().RangeAUC_volume_opt_mem(labels_original=label, score=score, windowSize=slidingWindow, thre=thre)
     else:
-        tpr_3d, fpr_3d, prec_3d, window_3d, avg_auc_3d, avg_ap_3d, existence = metricor().RangeAUC_volume_opt(labels_original=label, score=score, windowSize=slidingWindow, thre=thre)
+        tpr_3d, fpr_3d, prec_3d, window_3d, avg_auc_3d, avg_ap_3d = metricor().RangeAUC_volume_opt(labels_original=label, score=score, windowSize=slidingWindow, thre=thre)
     
     X = np.array(tpr_3d).reshape(1,-1).ravel()
     X_ap = np.array(tpr_3d)[:,:-1].reshape(1,-1).ravel()
@@ -326,7 +326,7 @@ def generate_curve(label,score, slidingWindow, version='opt', thre=250):
     Z = np.repeat(window_3d, len(tpr_3d[0]))
     Z_ap = np.repeat(window_3d, len(tpr_3d[0])-1)
     
-    return Y, Z, X, X_ap, W, Z_ap, avg_auc_3d, avg_ap_3d, existence
+    return Y, Z, X, X_ap, W, Z_ap, avg_auc_3d, avg_ap_3d
 
 def box_plot(data, edge_color, fill_color):
     bp = ax.boxplot(data, patch_artist=True)

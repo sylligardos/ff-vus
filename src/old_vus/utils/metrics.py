@@ -407,32 +407,20 @@ class metricor:
 		auc_3d = np.zeros(windowSize + 1)
 		ap_3d = np.zeros(windowSize + 1)
 
-		tp = np.zeros(thre)
+		# tp = np.zeros(thre)
 		N_pred = np.zeros(thre)		# number of predicted positives per threshold
 
 		for i, t in enumerate(thresholds):
 			pred = score >= t
 			N_pred[i] = np.sum(pred)
 		
-		my_TP_list = []
-		my_FP_list = []
-		my_existence_list = []
-		n_anomalies = []
 		for window in window_3d:	# Loop over the different slopes' lengths, window is int
 			labels_extended = self.sequencing(labels_original, sequences, window)			# sloped labels, but the slopes are bending and not to 1/root(2)
 			L = self.new_sequence(labels_extended, sequences, window)						# Sloped anomalies segments of the label
-			n_anomalies.append(len(L))
 
-			# if window == window_3d[-1]:
-			# 	plt.plot(labels_extended)
-			# 	plt.show()
-		
 			TF_list = np.zeros((thre + 2, 2))
 			Precision_list = np.ones(thre + 1)
 			j = 0
-			tmp_TP_list = []
-			tmp_FP_list = []
-			existence_list = []
 			for i, threshold in enumerate(thresholds):
 				pred = score >= threshold
 				labels = labels_extended.copy()
@@ -444,7 +432,6 @@ class metricor:
 						existence += 1
 
 				for seg in sequences:	# making sure that initial labels remain equal to 1, after 'turning off' some
-					# print(seg[1] - seg[0])
 					labels[seg[0]:seg[1] + 1] = 1
 
 				TP = 0
@@ -454,13 +441,8 @@ class metricor:
 					N_labels += np.sum(labels[seg[0]:seg[1] + 1])		# Sum of sloped-labels, that is positives + the extra slopes
 
 				FP = N_pred[j] - TP			# number of FPs, very close to mine
-				tmp_TP_list.append(TP)
-				tmp_FP_list.append(FP)
-
 				existence_ratio = existence / len(L)
-				# existence_ratio = 1
-				existence_list.append(existence_ratio)
-
+				
 				P_new = (P + N_labels) / 2		# (initial positives + (positives + extra slopes - 'turned off')) / 2
 				recall = min(TP / P_new, 1)		# true_positives / positives, or 1 if this exceeds 1
 
@@ -473,10 +455,6 @@ class metricor:
 				j += 1
 				TF_list[j] = [TPR, FPR]
 				Precision_list[j] = Precision
-			my_TP_list.append(tmp_TP_list)
-			my_FP_list.append(tmp_FP_list)
-			my_existence_list.append(existence_list)
-
 			TF_list[j + 1] = [1, 1]  # otherwise, range-AUC will stop earlier than (1,1)
 
 			tpr_3d[window] = TF_list[:, 0]		# List of TPRs for every threshold, for the current window
@@ -493,15 +471,7 @@ class metricor:
 
 			AP_range = np.dot(width_PR, height_PR)
 			ap_3d[window] = AP_range
-		existence = np.array(my_existence_list)
-		# print(np.array(my_TP_list)[-1])
-		# print(prec_3d[-1])
-		# print(ap_3d)
-		# print(existence[-1])
-		# print(tpr_3d[-1])
-		# exit()
-		# print(np.array(n_anomalies))
-		return tpr_3d, fpr_3d, prec_3d, window_3d, sum(auc_3d) / len(window_3d), sum(ap_3d) / len(window_3d), existence
+		return tpr_3d, fpr_3d, prec_3d, window_3d, sum(auc_3d) / len(window_3d), sum(ap_3d) / len(window_3d)
 
 	def RangeAUC_volume_opt_mem(self, labels_original, score, windowSize, thre=250):
 		window_3d = np.arange(0, windowSize + 1, 1)

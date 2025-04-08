@@ -123,7 +123,7 @@ def get_pivot_j(I, J):
     return(j_pivot)
 
 def integral_mini_interval(I, J):
-    """
+    r"""
     In the specific case where interval I is located outside J,
     integral of distance from x to J over the interval x \in I.
     This is the *integral* i.e. the sum.
@@ -142,7 +142,7 @@ def integral_mini_interval(I, J):
     return((b-a)*abs((j_pivot - (a+b)/2)))
 
 def integral_interval_distance(I, J):
-    """
+    r"""
     For any non empty intervals I, J, compute the
     integral of distance from x to J over the interval x \in I.
     This is the *integral* i.e. the sum. 
@@ -175,7 +175,7 @@ def integral_interval_distance(I, J):
     return(d_left + d_middle + d_right)
 
 def integral_mini_interval_P_CDFmethod__min_piece(I, J, E):
-    """
+    r"""
     Helper of `integral_mini_interval_Pprecision_CDFmethod`
     In the specific case where interval I is located outside J,
     compute the integral $\int_{d_min}^{d_max} \min(m, x) dx$, with:
@@ -211,7 +211,7 @@ def integral_mini_interval_P_CDFmethod__min_piece(I, J, E):
     return(C)
 
 def integral_mini_interval_Pprecision_CDFmethod(I, J, E):
-    """
+    r"""
     Integral of the probability of distances over the interval I.
     In the specific case where interval I is located outside J,
     compute the integral $\int_{x \in I} Fbar(dist(x,J)) dx$.
@@ -242,7 +242,7 @@ def integral_mini_interval_Pprecision_CDFmethod(I, J, E):
     return(output)
 
 def integral_interval_probaCDF_precision(I, J, E):
-    """
+    r"""
     Integral of the probability of distances over the interval I.
     Compute the integral $\int_{x \in I} Fbar(dist(x,J)) dx$.
     This is the *integral* i.e. the sum (not the mean)
@@ -304,7 +304,7 @@ def cut_J_based_on_mean_func(J, e_mean):
     return((J_before, J_after))
 
 def integral_mini_interval_Precall_CDFmethod(I, J, E):
-    """
+    r"""
     Integral of the probability of distances over the interval J.
     In the specific case where interval J is located outside I,
     compute the integral $\int_{y \in J} Fbar_y(dist(y,I)) dy$.
@@ -420,7 +420,7 @@ def integral_mini_interval_Precall_CDFmethod(I, J, E):
     return(C)
 
 def integral_interval_probaCDF_recall(I, J, E):
-    """
+    r"""
     Integral of the probability of distances over the interval J.
     Compute the integral $\int_{y \in J} Fbar_y(dist(y,I)) dy$.
     This is the *integral* i.e. the sum (not the mean)
