@@ -31,7 +31,7 @@ def generate_synthetic_labels(length=10000, n_anomalies=10, avg_anomaly_length=1
     Returns:
     - labels: np.array of shape (length,), binary values
     """
-    label = np.zeros(length, dtype=int)
+    label = np.zeros(length, dtype=np.int8)
     
     anomalies_index = np.random.choice(length, size=n_anomalies, replace=False)
     anomalies_length = np.abs(np.random.normal(loc=avg_anomaly_length, scale=avg_anomaly_length//4, size=n_anomalies)).astype(int)
@@ -53,7 +53,7 @@ def generate_score_from_labels(label, start_points, end_points, detection_prob=0
     length = len(label)
     n_anomalies = len(start_points)
     anomaly_lengths = []
-    score = np.abs(np.random.normal(loc=0.0, scale=noise, size=length))
+    score = np.abs(np.random.normal(loc=0.0, scale=noise, size=length), dtype=np.float16)
 
     detection = np.random.uniform(size=n_anomalies) < detection_prob
     
@@ -93,26 +93,31 @@ def generate_score_from_labels(label, start_points, end_points, detection_prob=0
     return np.clip(score, 0, 1)
 
 
-def main(
+def generate_synthetic_dataset(
     n_timeseries=10,
     ts_length=1000,
     n_anomalies=10,
     avg_anomaly_length=100,
 ):
+    if n_anomalies * avg_anomaly_length > 0.6 * ts_length:
+        return None
+
     total_start = time.time()
     dir_path = os.path.join(f"data/synthetic/synthetic_length_{ts_length}_n_anomalies_{n_anomalies}_avg_anomaly_length_{avg_anomaly_length}")
     os.makedirs(dir_path, exist_ok=True)
     ts_template_name = f"syn_{ts_length}_{n_anomalies}_{avg_anomaly_length}"
     ts_names = []
     
-    labels = np.zeros((n_timeseries, ts_length))
-    scores = np.zeros((n_timeseries, ts_length))
+    # labels = np.zeros((n_timeseries, ts_length))
+    # scores = np.zeros((n_timeseries, ts_length))
     times = np.zeros((n_timeseries))
     
     for i in tqdm(range(n_timeseries), desc="Generating labels"):
         tic = time.time()
-        labels[i], start_points, end_points = generate_synthetic_labels(length=ts_length, n_anomalies=n_anomalies)
-        scores[i] = generate_score_from_labels(labels[i], start_points, end_points, detection_prob=0.9, lag_ratio=10, noise=0.03, false_positive_strength=0.05)
+        label, start_points, end_points = generate_synthetic_labels(length=ts_length, n_anomalies=n_anomalies)
+        score = generate_score_from_labels(label, start_points, end_points, detection_prob=0.9, lag_ratio=10, noise=0.03, false_positive_strength=0.05)
+        # print(score)
+        # exit()
         toc = time.time()
 
         times[i] = toc - tic
@@ -126,7 +131,7 @@ def main(
         # plt.tight_layout()
         # plt.show()
 
-        np.savetxt(os.path.join(dir_path, f"{ts_names[-1]}.csv"), np.vstack((labels[i], scores[i])).T)
+        np.savetxt(os.path.join(dir_path, f"{ts_names[-1]}.csv"), np.vstack((label, score)).T, fmt=["%d", "%.2f"], delimiter=",")
 
     total_time = time.time() - total_start
     total_time_min = total_time / 60
@@ -167,7 +172,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    main(
+    generate_synthetic_dataset(
         n_timeseries=args.n_timeseries,
         ts_length=args.ts_length,
         n_anomalies=args.n_anomalies,

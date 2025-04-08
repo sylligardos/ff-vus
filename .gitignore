@@ -10,6 +10,7 @@ src/old_experiments_dont_use/
 *.keras
 scripts/regressors
 *.prof
+scripts/*/*.sh
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
