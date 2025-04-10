@@ -34,7 +34,7 @@ def create_shell_scripts():
     experiment_desc = {
         "job_name": "synthetic",
         "environment": "ffvus",
-        "script_name": "src/generate_synthetic_dataset.py",
+        "script_name": "generate_synthetic_dataset.py",
         "args": {
             "n_timeseries": [10],
             "ts_length": [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000],
