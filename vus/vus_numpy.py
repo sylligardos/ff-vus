@@ -26,7 +26,6 @@ class VUSNumpy():
             existence='optimized',
             conf_matrix='dynamic', 
             interpolation='stepwise',
-            metric='vus_pr',
         ):
         """
         Initialize the VUS metric.
@@ -80,39 +79,41 @@ class VUSNumpy():
         else:
             raise ValueError(f"Unknown argument for interpolation: {interpolation}. 'interpolation' should be one of {interpolation_args}")
         
-        metric_args = ['vus_pr', 'vus_roc', 'all']
-        if metric in metric_args:
-            self.metric = metric
-        else:
-            raise ValueError(f"Unknown argument for metric: {metric}. 'metric' should be one of {metric_args}")
+        # This is not yet implemented. It may be some time in the feature
+        # metric_args = ['vus_pr', 'vus_roc', 'all']
+        # if metric in metric_args:   
+        #     self.metric = metric
+        # else:
+        #     raise ValueError(f"Unknown argument for metric: {metric}. 'metric' should be one of {metric_args}")
 
-    @time_it
-    def compute(self, label, score, return_vus_roc=False):
+    def compute(self, label, score):
         """
         The main computing function of the metric
         """
         # TODO: Compute anomaly indexes and position here once, and then feed it to the functions bellow
         # TODO: Maybe the last 3 steps can be combined into one function that efficiently handles it
 
-        thresholds = self.get_unique_thresholds(score)
-
-        sm = self.get_score_mask(score, thresholds)
-
-        labels = self.add_slopes(label)
-
-        existence = self.compute_existence(labels, sm, score, thresholds)
+        thresholds, time_thresholds = time_it(self.get_unique_thresholds)(score)
+        sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
         
-        fp, fn, tp, positives, negatives, fpr, tpr = self.compute_confusion_matrix(labels, sm)
-
-        precision, recall = self.precision_recall_curve(tp, fp, positives, existence)
+        labels, time_slopes = time_it(self.add_slopes)(label)
+        existence, time_existence = time_it(self.compute_existence)(labels, sm, score, thresholds)
+        (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
+        (precision, recall), time_pr_rec = time_it(self.precision_recall_curve)(tp, fp, positives, existence)
+        vus_pr, time_integral = time_it(self.auc)(recall, precision)
         
-        if self.metric == 'vus_pr':
-            return self.auc(recall, precision).mean()
-        elif self.metric == 'vus_roc':
-            return self.auc(fpr, tpr).mean()
-        else:
-            return self.auc(recall, precision).mean(), self.auc(fpr, tpr).mean()
+        time_analysis = {
+            "Thresholds time": time_thresholds,
+            "Score mask time": time_sm,
+            "Slopes time": time_slopes,
+            "Existence time": time_existence,
+            "Confusion matrix time": time_confusion,
+            "Precision recall curve time": time_thresholds,
+            "Integral time": time_integral,
+        }
 
+        return vus_pr, time_analysis
+    
     def get_score_mask(self, score, thresholds):
         return score >= thresholds[:, None]
     
@@ -473,9 +474,8 @@ class VUSNumpy():
         fp = sm.sum(axis=1) - tp
         negatives = labels[0].shape[0] - positives
         fpr = fp / negatives
-        tpr = tp / positives
 
-        return fp, fn, tp, positives, negatives, fpr, tpr
+        return fp, fn, tp, positives, negatives, fpr
 
     def conf_matrix_trivial(self, labels, sm):
         label = labels[0]
@@ -496,7 +496,6 @@ class VUSNumpy():
 
         true_positives = np.matmul(masked_labels, masked_sm.T)
         false_negatives = np.matmul(masked_labels[0], masked_sm_inv.T)[:, np.newaxis].T
-        
 
         positives = ((true_positives + false_negatives) + masked_labels[0].sum()) / 2
 
@@ -531,9 +530,9 @@ class VUSNumpy():
     
     def auc(self, x, y):
         if self.interpolation_mode == 'linear':
-            return self.linear_interpolation(x, y)
+            return self.linear_interpolation(x, y).mean()
         else:
-            return self.stepwise_interpolation(x, y)    
+            return self.stepwise_interpolation(x, y).mean()
 
     def linear_interpolation(self, x, y):
         return np.trapezoid(y, x, axis=1)
@@ -543,3 +542,25 @@ class VUSNumpy():
         height_pr = y[:, 1:]
         return np.sum(np.multiply(width_pr, height_pr), axis=1)
     
+    def analyze_label(self, label):
+        """
+        Analyze a binary time series anomaly label vector
+        and return basic metrics.
+
+        Args:
+            label (np.ndarray): a 1D numpy array of 0s and 1s
+        Return:
+            length (int): total length of the label
+            n_anomalies (int): number of anomalies in the label
+            anomalies_avg_length (int): the average length of the anomalies
+        """
+        length = len(label)
+
+        start_points, end_points = self.get_anomalies_coordinates(label)
+        end_points += 1     # end points are exclusive, so this is necessary
+        
+        n_anomalies = start_points.shape[0]
+        anomaly_lengths = np.array([e - s for s, e in zip(start_points, end_points)])
+        anomalies_avg_length = np.mean(anomaly_lengths)
+        
+        return length, n_anomalies, anomalies_avg_length

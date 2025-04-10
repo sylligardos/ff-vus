@@ -98,10 +98,10 @@ def generate_synthetic_dataset(
     plot_example=False
 ):
     if n_anomalies * avg_anomaly_length > 0.6 * ts_length:
-        return None
+        raise ValueError(f"The total anomaly ratio cannot be more than 60%, current {(((n_anomalies * avg_anomaly_length) / ts_length) * 100):.2f}%")
 
     total_start = time.time()
-    dir_path = os.path.join(f"data/synthetic/synthetic_length_{ts_length}_n_anomalies_{n_anomalies}_avg_anomaly_length_{avg_anomaly_length}")
+    dir_path = os.path.join("data", "synthetic", f"synthetic_length_{ts_length}_n_anomalies_{n_anomalies}_avg_anomaly_length_{avg_anomaly_length}")
     os.makedirs(dir_path, exist_ok=True)
     ts_template_name = f"syn_{ts_length}_{n_anomalies}_{avg_anomaly_length}"
     
@@ -113,8 +113,6 @@ def generate_synthetic_dataset(
         tic = time.time()
         label, start_points, end_points = generate_synthetic_labels(length=ts_length, n_anomalies=n_anomalies)
         score = generate_score_from_labels(label, start_points, end_points, detection_prob=0.9, lag_ratio=10, noise=0.03, false_positive_strength=0.05)
-        # print(score)
-        # exit()
         toc = time.time()
 
         times[i] = toc - tic
@@ -142,7 +140,7 @@ def generate_synthetic_dataset(
     print(f"- Total generation time: {total_time:.2f} seconds ({total_time_min:.2f} min)")
 
     # Save this info to file
-    date_str = datetime.now().strftime("%d_%m_%Y")
+    date_str = "10_04_2025"
     info_dir = os.path.join("experiments", date_str, "synthetic_info")
     os.makedirs(info_dir, exist_ok=True)
     info_path = os.path.join(info_dir, f"{ts_template_name}.csv")

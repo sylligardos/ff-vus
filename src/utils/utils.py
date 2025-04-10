@@ -5,7 +5,6 @@
 @what: FF-VUS
 """
 
-
 from sklearn import metrics
 import time
 import functools
@@ -24,8 +23,7 @@ def time_it(func):
     return wrapper
 
 
-@time_it
-def auc_pr_wrapper(label, score, interpolation):
+def auc_pr_wrapper(label, score, interpolation='stepwise'):
     if interpolation == 'stepwise':
         auc_pr = metrics.average_precision_score(label, score)    
     elif interpolation == 'linear':

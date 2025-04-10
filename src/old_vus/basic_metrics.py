@@ -160,8 +160,6 @@ class basic_metricor:
         return precision, recall, AP
         
     def range_recall_new(self, labels, preds, alpha):   
-
-
         p = np.where(preds == 1)[0]    # positions of predicted label==1
         range_pred = self.range_convers_new(preds)  
         range_label = self.range_convers_new(labels)
@@ -414,4 +412,13 @@ class basic_metricor:
         
         return tpr_3d, fpr_3d, prec_3d, window_3d, sum(auc_3d)/len(window_3d), sum(ap_3d)/len(window_3d)
         
+    def sylli_RF(self, label, score, alpha=0.2):
+        preds = score > (np.mean(score) + 3 * np.std(score))
+        Rrecall, _, _ = self.range_recall_new(label, preds, alpha)
+        Rprecision = self.range_recall_new(preds, label, 0)[0]
         
+        if Rprecision + Rrecall == 0:
+            Rf = 0
+        else:
+            Rf = 2 * Rrecall * Rprecision / (Rprecision + Rrecall)
+        return Rf
