@@ -95,7 +95,7 @@ def compute_metric_over_syn(
         testing=None
 ):
     # Load dataset
-    dataset_path = os.path.join('data', dataset)
+    dataset_path = os.path.join('data', 'synthetic', dataset)
     csv_files = [x for x in os.listdir(dataset_path) if '.csv' in x]
 
     labels = []
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     parser.add_argument('--step', type=int, default=1, help='Step size between slopes')
     parser.add_argument('--slopes', type=str, choices=['precomputed', 'function'], default='precomputed',
                         help='Slope generation method')
-    parser.add_argument('--existence', type=str, choices=[None, 'trivial', 'optimized', 'matrix'], default='optimized',
+    parser.add_argument('--existence', type=str, choices=['None', 'trivial', 'optimized', 'matrix'], default='optimized',
                         help='Existence computation method')
     parser.add_argument('--conf_matrix', type=str, choices=['trivial', 'dynamic', 'dynamic_plus'], default='dynamic',
                         help='Type of confusion matrix computation')

@@ -61,7 +61,7 @@ class VUSNumpy():
         else:
             raise ValueError(f"Unknown argument for slopes: {slopes}. 'slopes' should be one of {existence_args}")
         
-        existence_args = [None, 'trivial', 'optimized', 'matrix']
+        existence_args = ['None', 'trivial', 'optimized', 'matrix']
         if existence in existence_args:
             self.existence_mode = existence
         else:
@@ -311,7 +311,7 @@ class VUSNumpy():
             return self.existence_optimized(labels, score, thresholds)
         if self.existence_mode == 'matrix':
             return self.existence_matrix(labels, sm)
-        if self.existence_mode is None:
+        if self.existence_mode == 'None':
             # return self.no_existence(thresholds)
             return None
         if self.existence_mode == 'trivial':
