@@ -393,11 +393,7 @@ class metricor:
 		sequences = self.range_convers_new(labels_original)					# Initial anomaly sequences, before enlarging them with slopes
 		l = self.new_sequence(labels_original, sequences, windowSize)		# Non-static segments, aka max slope
 		
-		if thre == -1:
-			thresholds = np.sort(np.unique(score))[::-1]
-		else:
-			score_sorted = -np.sort(-score)
-			thresholds = score_sorted[np.linspace(0, len(score) - 1, thre).astype(int)]
+		thresholds = np.sort(np.unique(score))[::-1]
 		thre = thresholds.shape[0]
 
 		tpr_3d = np.zeros((windowSize + 1, thre + 2))
@@ -407,32 +403,19 @@ class metricor:
 		auc_3d = np.zeros(windowSize + 1)
 		ap_3d = np.zeros(windowSize + 1)
 
-		tp = np.zeros(thre)
 		N_pred = np.zeros(thre)		# number of predicted positives per threshold
 
 		for i, t in enumerate(thresholds):
 			pred = score >= t
 			N_pred[i] = np.sum(pred)
 		
-		my_TP_list = []
-		my_FP_list = []
-		my_existence_list = []
-		n_anomalies = []
 		for window in window_3d:	# Loop over the different slopes' lengths, window is int
 			labels_extended = self.sequencing(labels_original, sequences, window)			# sloped labels, but the slopes are bending and not to 1/root(2)
 			L = self.new_sequence(labels_extended, sequences, window)						# Sloped anomalies segments of the label
-			n_anomalies.append(len(L))
 
-			# if window == window_3d[-1]:
-			# 	plt.plot(labels_extended)
-			# 	plt.show()
-		
 			TF_list = np.zeros((thre + 2, 2))
 			Precision_list = np.ones(thre + 1)
 			j = 0
-			tmp_TP_list = []
-			tmp_FP_list = []
-			existence_list = []
 			for i, threshold in enumerate(thresholds):
 				pred = score >= threshold
 				labels = labels_extended.copy()
@@ -444,7 +427,6 @@ class metricor:
 						existence += 1
 
 				for seg in sequences:	# making sure that initial labels remain equal to 1, after 'turning off' some
-					# print(seg[1] - seg[0])
 					labels[seg[0]:seg[1] + 1] = 1
 
 				TP = 0
@@ -454,13 +436,8 @@ class metricor:
 					N_labels += np.sum(labels[seg[0]:seg[1] + 1])		# Sum of sloped-labels, that is positives + the extra slopes
 
 				FP = N_pred[j] - TP			# number of FPs, very close to mine
-				tmp_TP_list.append(TP)
-				tmp_FP_list.append(FP)
-
 				existence_ratio = existence / len(L)
-				# existence_ratio = 1
-				existence_list.append(existence_ratio)
-
+				
 				P_new = (P + N_labels) / 2		# (initial positives + (positives + extra slopes - 'turned off')) / 2
 				recall = min(TP / P_new, 1)		# true_positives / positives, or 1 if this exceeds 1
 
@@ -473,10 +450,6 @@ class metricor:
 				j += 1
 				TF_list[j] = [TPR, FPR]
 				Precision_list[j] = Precision
-			my_TP_list.append(tmp_TP_list)
-			my_FP_list.append(tmp_FP_list)
-			my_existence_list.append(existence_list)
-
 			TF_list[j + 1] = [1, 1]  # otherwise, range-AUC will stop earlier than (1,1)
 
 			tpr_3d[window] = TF_list[:, 0]		# List of TPRs for every threshold, for the current window
@@ -493,15 +466,7 @@ class metricor:
 
 			AP_range = np.dot(width_PR, height_PR)
 			ap_3d[window] = AP_range
-		existence = np.array(my_existence_list)
-		# print(np.array(my_TP_list)[-1])
-		# print(prec_3d[-1])
-		# print(ap_3d)
-		# print(existence[-1])
-		# print(tpr_3d[-1])
-		# exit()
-		# print(np.array(n_anomalies))
-		return tpr_3d, fpr_3d, prec_3d, window_3d, sum(auc_3d) / len(window_3d), sum(ap_3d) / len(window_3d), existence
+		return tpr_3d, fpr_3d, prec_3d, window_3d, sum(auc_3d) / len(window_3d), sum(ap_3d) / len(window_3d)
 
 	def RangeAUC_volume_opt_mem(self, labels_original, score, windowSize, thre=250):
 		window_3d = np.arange(0, windowSize + 1, 1)
@@ -509,8 +474,9 @@ class metricor:
 		seq = self.range_convers_new(labels_original)
 		l = self.new_sequence(labels_original, seq, windowSize)
 
-		score_sorted = -np.sort(-score)
-
+		thresholds = np.sort(np.unique(score))[::-1]
+		thre = thresholds.shape[0]
+		
 		tpr_3d = np.zeros((windowSize + 1, thre + 2))
 		fpr_3d = np.zeros((windowSize + 1, thre + 2))
 		prec_3d = np.zeros((windowSize + 1, thre + 1))
@@ -518,15 +484,13 @@ class metricor:
 		auc_3d = np.zeros(windowSize + 1)
 		ap_3d = np.zeros(windowSize + 1)
 
-		tp = np.zeros(thre)
 		N_pred = np.zeros(thre)
 		p = np.zeros((thre, len(score)))
 
-		for k, i in enumerate(np.linspace(0, len(score) - 1, thre).astype(int)):
-			threshold = score_sorted[i]
-			pred = score >= threshold
-			p[k] = pred
-			N_pred[k] = np.sum(pred)
+		for i, t in enumerate(thresholds):
+			pred = score >= t
+			p[i] = pred
+			N_pred[i] = np.sum(pred)
 
 		for window in window_3d:
 			labels_extended = self.sequencing(labels_original, seq, window)
@@ -536,7 +500,7 @@ class metricor:
 			Precision_list = np.ones(thre + 1)
 			j = 0
 
-			for i in np.linspace(0, len(score) - 1, thre).astype(int):
+			for i in range(len(thresholds)):
 				labels = labels_extended.copy()
 				existence = 0
 
@@ -547,27 +511,25 @@ class metricor:
 				for seg in seq:
 					labels[seg[0]:seg[1] + 1] = 1
 
-				N_labels = 0
 				TP = 0
+				N_labels = 0
 				for seg in l:
 					TP += np.dot(labels[seg[0]:seg[1] + 1], p[j][seg[0]:seg[1] + 1])
 					N_labels += np.sum(labels[seg[0]:seg[1] + 1])
 
-				TP += tp[j]
 				FP = N_pred[j] - TP
-
 				existence_ratio = existence / len(L)
 
 				P_new = (P + N_labels) / 2
 				recall = min(TP / P_new, 1)
 
 				TPR = recall * existence_ratio
-
 				N_new = len(labels) - P_new
 				FPR = FP / N_new
-				Precision = TP / N_pred[j]
-				j += 1
 
+				Precision = TP / N_pred[j]
+				
+				j += 1
 				TF_list[j] = [TPR, FPR]
 				Precision_list[j] = Precision
 
@@ -576,96 +538,116 @@ class metricor:
 			fpr_3d[window] = TF_list[:, 1]
 			prec_3d[window] = Precision_list
 
-			width = TF_list[1:, 1] - TF_list[:-1, 1]
-			height = (TF_list[1:, 0] + TF_list[:-1, 0]) / 2
-			AUC_range = np.dot(width, height)
-			auc_3d[window] = (AUC_range)
+			# width = TF_list[1:, 1] - TF_list[:-1, 1]
+			# height = (TF_list[1:, 0] + TF_list[:-1, 0]) / 2
+			# AUC_range = np.dot(width, height)
+			# auc_3d[window] = (AUC_range)
 
 			width_PR = TF_list[1:-1, 0] - TF_list[:-2, 0]
 			height_PR = Precision_list[1:]
+			
 			AP_range = np.dot(width_PR, height_PR)
 			ap_3d[window] = (AP_range)
-		return tpr_3d, fpr_3d, prec_3d, window_3d, sum(auc_3d) / len(window_3d), sum(ap_3d) / len(window_3d)    
+		# return tpr_3d, fpr_3d, prec_3d, window_3d, sum(auc_3d) / len(window_3d), sum(ap_3d) / len(window_3d)
+		return tpr_3d, fpr_3d, prec_3d, window_3d, sum(ap_3d) / len(window_3d)    
 
-	def RangeAUC_volume_opt_time(self, labels_original, score, windowSize, thre=250):
-		window_3d = np.arange(0, windowSize+1, 1)
+	def sylli_RangeAUC_volume_opt_mem(self, labels_original, score, windowSize, thre=250):
+		window_3d = np.arange(0, windowSize + 1, 1)
 		P = np.sum(labels_original)
 		seq = self.range_convers_new(labels_original)
 		l = self.new_sequence(labels_original, seq, windowSize)
 
-		score_sorted = -np.sort(-score)
+		thresholds = np.sort(np.unique(score))[::-1]
+		thre = thresholds.shape[0]
+		
+		tpr_3d = np.zeros((windowSize + 1, thre + 2))
+		fpr_3d = np.zeros((windowSize + 1, thre + 2))
+		prec_3d = np.zeros((windowSize + 1, thre + 1))
 
-		tpr_3d=np.zeros((windowSize+1,thre+2))
-		fpr_3d=np.zeros((windowSize+1,thre+2))
-		prec_3d=np.zeros((windowSize+1,thre+1))
+		auc_3d = np.zeros(windowSize + 1)
+		ap_3d = np.zeros(windowSize + 1)
 
-		auc_3d=np.zeros(windowSize+1)
-		ap_3d=np.zeros(windowSize+1)
-
-		tp = np.zeros(thre)
 		N_pred = np.zeros(thre)
-		p = np.zeros((thre,len(score)))
-		tmp = np.linspace(0, len(score)-1, thre).astype(int)
+		p = np.zeros((thre, len(score)))
 
-		for k, i in enumerate(tmp):
-			threshold = score_sorted[i]
-			pred = score>= threshold
-			p[k]=pred
-			N_pred[k]=np.sum(pred)
+		for i, t in enumerate(thresholds):
+			pred = score >= t
+			p[i] = pred
+			N_pred[i] = np.sum(pred)
 
 		for window in window_3d:
+			labels_extended = self.sequencing(labels_original, seq, window)
+			L = self.new_sequence(labels_extended, seq, window)
 
-			labels = self.sequencing(labels_original, seq, window)
-			L = self.new_sequence(labels, seq, window)
+			TF_list = np.zeros((thre + 2, 2))
+			Precision_list = np.ones(thre + 1)
+			j = 0
 
-			TF_list = np.zeros((thre+2,2))
-			Precision_list = np.ones(thre+1)
-			j=0
-			N_labels = 0
+			for i in range(len(thresholds)):
+				labels = labels_extended.copy()
+				existence = 0
 
-			for seg in l:
-				N_labels += np.sum(labels[seg[0]:seg[1]+1])
+				for seg in L:
+					labels[seg[0]:seg[1] + 1] = labels_extended[seg[0]:seg[1] + 1] * p[j][seg[0]:seg[1] + 1]
+					if (p[j][seg[0]:(seg[1] + 1)] > 0).any():
+						existence += 1
+				for seg in seq:
+					labels[seg[0]:seg[1] + 1] = 1
 
-			TF_list, Precision_list, j = vectorized(tmp, score_sorted, score, l, labels, j, tp, N_pred, L, P, N_labels, TF_list, Precision_list)
+				TP = 0
+				N_labels = 0
+				for seg in l:
+					TP += np.dot(labels[seg[0]:seg[1] + 1], p[j][seg[0]:seg[1] + 1])
+					N_labels += np.sum(labels[seg[0]:seg[1] + 1])
 
-			TF_list[j+1]=[1,1]
+				FP = N_pred[j] - TP
+				existence_ratio = existence / len(L)
+
+				P_new = (P + N_labels) / 2
+				recall = min(TP / P_new, 1)
+
+				TPR = recall * existence_ratio
+				N_new = len(labels) - P_new
+				FPR = FP / N_new
+
+				Precision = TP / N_pred[j]
+				
+				j += 1
+				TF_list[j] = [TPR, FPR]
+				Precision_list[j] = Precision
+
+			TF_list[j + 1] = [1, 1]
+			tpr_3d[window] = TF_list[:, 0]
+			fpr_3d[window] = TF_list[:, 1]
+			prec_3d[window] = Precision_list
+
+			width_PR = TF_list[1:-1, 0] - TF_list[:-2, 0]
+			height_PR = Precision_list[1:]
 			
-
-			tpr_3d[window]=TF_list[:,0]
-			fpr_3d[window]=TF_list[:,1]
-			prec_3d[window]=Precision_list
+			AP_range = np.dot(width_PR, height_PR)
+			ap_3d[window] = (AP_range)
+		return sum(ap_3d) / len(window_3d)
+	
+	def sylli_RangeAUC(self, labels, score, window):
+		thresholds = np.sort(np.unique(score))[::-1]
+		P = np.sum(labels)
+		labels = self.extend_postive_range(labels, window=window)
+		
+		L = self.range_convers_new(labels)
+		TF_list = np.zeros((len(thresholds) + 2, 2))
+		Precision_list = np.ones(len(thresholds) + 1)
+		j = 0
+		for threshold in thresholds:
+			pred = score >= threshold
+			TPR, FPR, Precision = self.TPR_FPR_RangeAUC(labels, pred, P,L)
+			j+=1
+			TF_list[j]=[TPR, FPR]
+			Precision_list[j]=(Precision)
 			
-			width = TF_list[1:,1] - TF_list[:-1,1]
-			height = (TF_list[1:,0] + TF_list[:-1,0])/2
-			AUC_range = np.dot(width,height)
-			auc_3d[window]=(AUC_range)
-			
-			width_PR = TF_list[1:-1,0] - TF_list[:-2,0]
-			height_PR = (Precision_list[1:] + Precision_list[:-1])/2
-			AP_range = np.dot(width_PR,height_PR)
-			ap_3d[window]=(AP_range)
+		TF_list[j + 1]=[1, 1]
 
-		return tpr_3d, fpr_3d, prec_3d, window_3d, sum(auc_3d)/len(window_3d), sum(ap_3d)/len(window_3d)
+		width_PR = TF_list[1:-1, 0] - TF_list[:-2, 0]
+		height_PR = (Precision_list[1:] + Precision_list[:-1])/2
+		AP_range = np.dot(width_PR,height_PR)
 
-
-def vectorized(tmp, score_sorted, score, l, labels, j, tp, N_pred, L, P, N_labels, TF_list, Precision_list):
-	thresholds = score_sorted[tmp]
-	pred = score[:, None] >= thresholds
-	
-	TP = np.sum([np.dot(labels[seg[0]:seg[1]+1], pred[seg[0]:seg[1]+1, :]) for seg in l], axis=0) + tp[j:j+len(tmp)]
-	FP = N_pred[j:j+len(tmp)] - TP
-	
-	existence = np.sum([np.any(np.dot(labels[seg[0]:seg[1]+1], pred[seg[0]:seg[1]+1, :]), axis=0) for seg in L], axis=0)
-	existence_ratio = existence / len(L)
-	
-	P_new = (P + N_labels) / 2
-	recall = np.minimum(TP / P_new, 1)
-	TPR = recall * existence_ratio
-	N_new = len(labels) - P_new
-	FPR = FP / N_new
-	Precision = TP / N_pred[j:j+len(tmp)]
-	
-	TF_list[j+1:j+len(tmp)+1] = np.column_stack((TPR, FPR))
-	Precision_list[j+1:j+len(tmp)+1] = Precision
-	
-	return TF_list, Precision_list, j + len(tmp)
+		return AP_range

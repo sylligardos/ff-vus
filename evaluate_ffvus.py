@@ -10,15 +10,15 @@ from vus.vus_numpy import VUSNumpy
 
 from src.utils.scoreloader import Scoreloader
 from src.utils.dataloader import Dataloader
-from src.old_vus.metrics import get_metrics
-from src.utils.utils import auc_pr_wrapper
+from src.old_vus.sylli_metrics import sylli_get_metrics
+from src.utils.utils import auc_pr_wrapper, time_it
 
 import argparse
 import time
 import math
 import torch
 
-def main(testing):
+def evaluate_ffvus(testing):
     dataloader = Dataloader(raw_data_path='data/raw')
     datasets = ['Occupancy'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
@@ -39,11 +39,9 @@ def main(testing):
     zita = (1 / math.sqrt(2))
     slopes='precomputed'           # ['precomputed', 'function']
     existence = 'optimized'        # [None, 'trivial', 'optimized', 'matrix']
-    conf_matrix = 'dynamic'     # ['trivial', 'dynamic', 'dynamic_plus']          
+    conf_matrix = 'trivial'     # ['trivial', 'dynamic', 'dynamic_plus']          
     interpolation = 'stepwise'  # ['linear', 'stepwise']
-    metric = 'vus_pr'           # ['vus_pr', 'vus_roc', 'all']
-    compare = True
-
+    
     vus_numpy = VUSNumpy(
         slope_size=slope_size, 
         step=step, 
@@ -52,11 +50,11 @@ def main(testing):
         existence=existence,
         conf_matrix=conf_matrix, 
         interpolation=interpolation,
-        metric=metric, 
     )
 
     for filename, label, curr_scores in zip(filenames, labels, scores):
         for detector, score in zip(detectors, curr_scores.T):
+            # Compare aucpr, ffaucpr, ffvuspr, vuspr for the whole TSB
             curr_result = {
                 'Time series': filename,
                 'Detector': detector,
@@ -72,29 +70,23 @@ def main(testing):
             })
 
             # TODO: Fix small difference between VUS and FF-VUS
-            ff_vus_pr, ff_vus_time = vus_numpy.compute(label, score)
-            # print(ff_vus_pr, ff_vus_time)
+            ff_vus_pr, ff_vus_time_analysis = vus_numpy.compute(label, score)
+            ff_vus_time = sum([ff_vus_time_analysis[key] for key in ff_vus_time_analysis.keys()])
             curr_result.update({
                 'FF-VUS-PR': ff_vus_pr,
                 # 'FF-AUC-PR': ff_auc_pr,
-                'FF-VUS time': ff_vus_time,
+                'FF-VUS time': ff_vus_time_analysis,
             })
 
-            if compare:
-                tic = time.time()
-                repo_metrics, repo_existence = get_metrics(score, label, metric='vus', version='opt', slidingWindow=slope_size, thre=-1)
-                vus_time = time.time() - tic
-                vus_pr = repo_metrics['VUS_PR']
-                curr_result.update({
-                    'VUS-PR': vus_pr,
-                    'VUS time': vus_time,
-                })
-                print(f"{(ff_vus_pr - vus_pr)}, {(vus_time/ff_vus_time):.2f}")
-                # print(f"({i}, {j}) AUC-PR: {auc_pr:.5f}, FF AUC-PR: {ff_auc_pr:.5f}, Diff.: {abs(auc_pr - ff_auc_pr)}, VUS-PR: {vus_pr:.5f}, FF VUS-PR: {ff_vus_pr:.5f}, Diff.: {abs(vus_pr - ff_vus_pr)}, AUC Slow down: {(ff_vus_time / auc_pr_time):.2f}, VUS Speed up: {(vus_time / ff_vus_time):.2f}, Length: {y[i].shape[0]}")
-                # print(f"({i}, {j}) AUC-PR: {auc_pr:.5f}, FF AUC-PR: {ff_auc_pr:.5f}, Diff.: {abs(auc_pr - ff_auc_pr)}, VUS-PR: {vus_pr:.5f}, FF VUS-PR: {ff_vus_pr:.5f}, Diff.: {abs(vus_pr - ff_vus_pr)}, AUC Slow down: {(ff_vus_time / auc_pr_time):.2f}, VUS Speed up: {(vus_time / ff_vus_time):.2f}, Length: {y[i].shape[0]}")
-            else:
-                pass
-                # print(f"({i}, {j}) AUC-PR: {auc_pr:.5f}, FF AUC-PR: {ff_auc_pr:.5f}, Diff.: {abs(auc_pr - ff_auc_pr)}, AUC Slow down: {(ff_vus_time / auc_pr_time):.5f}, Length: {y[i].shape[0]}")
+            vus_pr, vus_time = time_it(sylli_get_metrics)(score, label, metric='RF', slidingWindow=slope_size)
+            curr_result.update({
+                'VUS-PR': vus_pr,
+                'VUS time': vus_time,
+            })
+            print(f"{(ff_vus_pr - vus_pr)}, {(vus_time / ff_vus_time):.2f}")
+            # print(f"({i}, {j}) AUC-PR: {auc_pr:.5f}, FF AUC-PR: {ff_auc_pr:.5f}, Diff.: {abs(auc_pr - ff_auc_pr)}, VUS-PR: {vus_pr:.5f}, FF VUS-PR: {ff_vus_pr:.5f}, Diff.: {abs(vus_pr - ff_vus_pr)}, AUC Slow down: {(ff_vus_time / auc_pr_time):.2f}, VUS Speed up: {(vus_time / ff_vus_time):.2f}, Length: {y[i].shape[0]}")
+            # print(f"({i}, {j}) AUC-PR: {auc_pr:.5f}, FF AUC-PR: {ff_auc_pr:.5f}, Diff.: {abs(auc_pr - ff_auc_pr)}, VUS-PR: {vus_pr:.5f}, FF VUS-PR: {ff_vus_pr:.5f}, Diff.: {abs(vus_pr - ff_vus_pr)}, AUC Slow down: {(ff_vus_time / auc_pr_time):.2f}, VUS Speed up: {(vus_time / ff_vus_time):.2f}, Length: {y[i].shape[0]}")
+
             results.append(curr_result)
 
 
@@ -108,4 +100,4 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    main(testing=args.testing)
+    evaluate_ffvus(testing=args.testing)

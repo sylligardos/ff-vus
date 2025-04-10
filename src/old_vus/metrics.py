@@ -6,12 +6,12 @@ def get_metrics(score, labels, metric='all', version='opt', slidingWindow=None, 
 	metrics = {}
 	if metric == 'vus':
 		grader = metricor()
-		_, _, _, _, _, _,VUS_ROC, VUS_PR, existence = generate_curve(labels, score, slidingWindow, version, thre)
+		_, _, _, _, _, _,VUS_ROC, VUS_PR = generate_curve(labels, score, slidingWindow, version, thre)
 
 		metrics['VUS_ROC'] = VUS_ROC
 		metrics['VUS_PR'] = VUS_PR
 
-		return metrics, existence
+		return metrics
 
 	elif metric == 'range_auc':
 		grader = metricor()
@@ -23,7 +23,6 @@ def get_metrics(score, labels, metric='all', version='opt', slidingWindow=None, 
 		return metrics
 
 	elif metric == 'auc':
-		
 		grader = metricor()
 		AUC_ROC = grader.metric_new_auc(labels, score, plot_ROC=False)
 		_, _, AUC_PR = grader.metric_PR(labels, score)

@@ -71,7 +71,13 @@ class Scoreloader:
 				# del file_names[idx]
 
 		return scores, idx_failed
+	
 
+	def clean_failed_idx(self, a, failed_idx):
+		if len(failed_idx) == 0:
+			return a
+		else:
+			return [x for i, x in enumerate(a) if i not in failed_idx]
 
 	def load_score(self, args):
 		"""
