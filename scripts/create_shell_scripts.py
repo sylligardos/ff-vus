@@ -41,7 +41,7 @@ def create_shell_scripts():
                 "dataset": ['tsb'] + os.listdir(os.path.join('data', 'synthetic')),
                 "metric": ['ff_vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr'
                 "slope_size": [0, 10, 100, 1000], #[0] + [int(x) for x in 2**np.arange(11)],
-                "step":  [0, 10, 100, 1000], #[int(x) for x in 2**np.arange(11)],
+                "step":  [1, 10, 100, 1000], #[int(x) for x in 2**np.arange(11)],
                 "slopes": ['precomputed'], #, 'function'
                 "existence": ['None', 'trivial', 'optimized'], #, 'matrix'
                 "conf_matrix": ['trivial', 'dynamic', 'dynamic_plus'],
