@@ -16,21 +16,21 @@ module_path = os.path.abspath(os.path.join('../..'))
 if module_path not in sys.path:
     sys.path.append(module_path)
 
-from old_vus.utils.slidingWindows import find_length
-from old_vus.utils.metrics import metricor
+from legacy.utils.slidingWindows import find_length
+from legacy.utils.metrics import metricor
 
-from old_vus.models.distance import Fourier
-from old_vus.models.feature import Window
-from old_vus.models.cnn import cnn
+from legacy.models.distance import Fourier
+from legacy.models.feature import Window
+from legacy.models.cnn import cnn
 from vus.models.AE_mlp2 import AE_MLP2
-from old_vus.models.lstm import lstm
-from old_vus.models.ocsvm import OCSVM
-from old_vus.models.poly import POLY
-from old_vus.models.pca import PCA
+from legacy.models.lstm import lstm
+from legacy.models.ocsvm import OCSVM
+from legacy.models.poly import POLY
+from legacy.models.pca import PCA
 from vus.models.norma import NORMA
-from old_vus.models.matrix_profile import MatrixProfile
-from old_vus.models.lof import LOF
-from old_vus.models.iforest import IForest
+from legacy.models.matrix_profile import MatrixProfile
+from legacy.models.lof import LOF
+from legacy.models.iforest import IForest
 
 def find_section_length(label,length):
     best_i = None

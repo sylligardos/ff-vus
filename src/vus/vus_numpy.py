@@ -5,15 +5,11 @@
 @what: FF-VUS
 """
 
-from src.utils.utils import time_it, compute_slopes_and_compare, visualize_differences_1d, compare_vectors
+from utils.utils import time_it
 
 import numpy as np
 import math
 from skimage.util.shape import view_as_windows as viewW
-import matplotlib.pyplot as plt
-import seaborn as sns
-import time
-from scipy.special import digamma
 
 
 class VUSNumpy():
@@ -29,7 +25,6 @@ class VUSNumpy():
         ):
         """
         Initialize the VUS metric.
-        TODO: Instead of saving the variables you can save the appropriate functions in the variables instead of
 
         Args:
             TODO: Write the arguments description when done
@@ -206,39 +201,6 @@ class VUSNumpy():
                 raise ValueError(f'The number of start and end points of anomalies does not match, {start_points} != {end_points}')
             
         return start_points, end_points
-    
-    def harmonic_series(self, n):
-        """
-        Approximate the nth harmonic number H_n using the Euler-Mascheroni approximation.
-        
-        Args:
-            n (int): The number of terms in the harmonic series.
-
-        Returns:
-            float: Approximated value of the harmonic series.
-        """
-        return digamma(n + 1) + np.euler_gamma
-
-    def add_slope_approximate(self, label):
-        """
-        This implementation of approximating the mean slope fast is not correct yet.
-        Even, the speed up is 2-3 times faster for CPUs so maybe it's not worth it.
-        
-        There is no (up to now) easy/fast way to approximate the mean of the slopes that is 
-        significantly faster than just actually computing them.
-        """
-        pos = self._distance_from_anomaly(label)
-        mask = np.where(np.logical_and((pos < self.n_slopes), (pos > 0))) 
-        h_l = self.harmonic_series(self.slope_size)
-        # mean_slope = np.mean(self.neg_slopes, axis=0)
-
-        slope = np.zeros(label.shape)
-        slope[mask] = (self.slope_size - pos[mask] + 1) * self.zita + (1 - self.zita) * (h_l - self.harmonic_series(pos[mask] - 1))
-        slope /= self.n_slopes
-        # slope[(self.slope_size - pos) < 0] = 0
-        slope[np.where(label.astype(bool))] = 1
-
-        return slope
 
     def _slope_function(self, label, pos):
         """
@@ -564,3 +526,37 @@ class VUSNumpy():
         anomalies_avg_length = np.mean(anomaly_lengths)
         
         return length, n_anomalies, anomalies_avg_length
+    
+    # An attempt to make a faster average version but it's not worth it check desc.
+    # def harmonic_series(self, n):
+    #     """
+    #     Approximate the nth harmonic number H_n using the Euler-Mascheroni approximation.
+        
+    #     Args:
+    #         n (int): The number of terms in the harmonic series.
+
+    #     Returns:
+    #         float: Approximated value of the harmonic series.
+    #     """
+    #     return digamma(n + 1) + np.euler_gamma
+
+    # def add_slope_approximate(self, label):
+    #     """
+    #     This implementation of approximating the mean slope fast is not correct yet.
+    #     Even, the speed up is 2-3 times faster for CPUs so maybe it's not worth it.
+        
+    #     There is no (up to now) easy/fast way to approximate the mean of the slopes that is 
+    #     significantly faster than just actually computing them.
+    #     """
+    #     pos = self._distance_from_anomaly(label)
+    #     mask = np.where(np.logical_and((pos < self.n_slopes), (pos > 0))) 
+    #     h_l = self.harmonic_series(self.slope_size)
+    #     # mean_slope = np.mean(self.neg_slopes, axis=0)
+
+    #     slope = np.zeros(label.shape)
+    #     slope[mask] = (self.slope_size - pos[mask] + 1) * self.zita + (1 - self.zita) * (h_l - self.harmonic_series(pos[mask] - 1))
+    #     slope /= self.n_slopes
+    #     # slope[(self.slope_size - pos) < 0] = 0
+    #     slope[np.where(label.astype(bool))] = 1
+
+    #     return slope

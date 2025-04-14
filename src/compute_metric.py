@@ -7,29 +7,22 @@
 
 
 from vus.vus_numpy import VUSNumpy
+from vus.vus_torch import VUSTorch
 
-from src.utils.scoreloader import Scoreloader
-from src.utils.dataloader import Dataloader
-from src.old_vus.sylli_metrics import sylli_get_metrics
-from src.utils.utils import auc_pr_wrapper, time_it
+from utils.scoreloader import Scoreloader
+from utils.dataloader import Dataloader
+from legacy.sylli_metrics import sylli_get_metrics
+from utils.utils import time_it, analyze_label
 
 import argparse
 import pandas as pd
 from tqdm import tqdm
 import os
 import numpy as np
-import glob
+import torch
 
-  
-def compute_metric_over_tsb(
-        metric,
-        slope_size=None, 
-        step=None,
-        slopes=None,
-        existence=None,
-        conf_matrix=None,
-        testing=False
-):
+
+def load_tsb(testing=False, return_random=True):
     # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
     datasets = ['Occupancy'] if testing else dataloader.get_dataset_names()
@@ -42,58 +35,20 @@ def compute_metric_over_tsb(
     scoreloader = Scoreloader('data/scores')
     detectors = scoreloader.get_detector_names()
     scores, idx_failed = scoreloader.load_parallel(filenames)
-    labels = scoreloader.clean_failed_idx(labels, idx_failed)
-    filenames = scoreloader.clean_failed_idx(filenames, idx_failed)
+    labels, filenames = scoreloader.clean_failed_idx(labels, idx_failed), scoreloader.clean_failed_idx(filenames, idx_failed)
     if len(scores) != len(labels) or len(scores) != len(filenames):
         raise ValueError(f'Size of scores and labels is not the same, scores: {len(scores)}, labels: {len(labels)}, filenames: {len(filenames)}')
 
-    # Setup
-    metric_name = metric.replace('_', '-').upper()
-    results = []
-    vus_numpy = VUSNumpy(       # Anyways needed for analyzing the label
-        slope_size=slope_size, 
-        step=step,  
-        slopes=slopes,
-        existence=existence,
-        conf_matrix=conf_matrix,
-    )
+    # Pick a random detector score for each label
+    if return_random:
+        detectors_idx = np.random.randint(0, len(detectors), size=len(labels))
+        scores = [score[:, idx] for score, idx in zip(scores, detectors_idx)]
 
-    for filename, label, curr_scores in tqdm(zip(filenames, labels, scores), desc='Computing metric', total=len(labels)):
-        for detector, score in zip(detectors, curr_scores.T):
-            length, n_anomalies, anomalies_avg_length = vus_numpy.analyze_label(label)
-            results.append({
-                "Time series": filename,
-                "Detector": detector,
-                "Length": length,
-                "Number of anomalies": n_anomalies,
-                "Anomalies average length": float(anomalies_avg_length),
-            })
+    detectors_selected = [detectors[idx] for idx in detectors_idx]
 
-            if metric == 'ff_vus_pr':
-                metric_value, ff_vus_time_analysis = vus_numpy.compute(label, score)
-                metric_time = sum([ff_vus_time_analysis[key] for key in ff_vus_time_analysis.keys()])
-                results[-1].update(ff_vus_time_analysis)
+    return filenames, labels, scores, detectors_selected
 
-            else:
-                metric_value, metric_time = time_it(sylli_get_metrics)(label, score, metric, slope_size)
-    
-            results[-1].update({
-                metric_name: float(metric_value),
-                f"{metric_name} time": metric_time,
-            })
-        
-    return pd.DataFrame(results)
-
-def compute_metric_over_syn(
-        dataset, 
-        metric, 
-        slope_size=None, 
-        step=None, 
-        slopes=None, 
-        existence=None, 
-        conf_matrix=None, 
-        testing=None
-):
+def load_synthetic(dataset):
     # Load dataset
     dataset_path = os.path.join('data', 'synthetic', dataset)
     csv_files = [x for x in os.listdir(dataset_path) if '.csv' in x]
@@ -110,20 +65,41 @@ def compute_metric_over_syn(
 
     labels = np.array(labels)
     scores = np.array(scores)
-    
+
+    return csv_files, labels, scores
+
+def compute_metric(
+        filenames,
+        labels, 
+        scores, 
+        metric, 
+        slope_size=None, 
+        step=None, 
+        slopes=None, 
+        existence=None, 
+        conf_matrix=None, 
+):
     # Compute metric
     metric_name = metric.replace('_', '-').upper()
     results = []
-    vus_numpy = VUSNumpy(       # Anyways needed for analyzing the label
-        slope_size=slope_size, 
-        step=step,  
-        slopes=slopes,
-        existence=existence,
-        conf_matrix=conf_matrix,
-    )
+    
+    if metric == 'ff_vus_pr':
+        ff_vus = VUSNumpy(
+            slope_size=slope_size, 
+            step=step,  
+            slopes=slopes,
+            existence=existence,
+            conf_matrix=conf_matrix,
+        )
+    elif metric == 'ff_vus_pr_gpu':
+        ff_vus = VUSTorch(
+            slope_size=slope_size, 
+            step=step,
+            conf_matrix=conf_matrix,
+        )
 
-    for filename, label, score in tqdm(zip(csv_files, labels, scores), desc='Computing metric', total=len(labels)):
-        length, n_anomalies, anomalies_avg_length = vus_numpy.analyze_label(label)
+    for filename, label, score in tqdm(zip(filenames, labels, scores), desc='Computing metric', total=len(labels)):
+        length, n_anomalies, anomalies_avg_length = analyze_label(label)
         results.append({
             "Time series": filename,
             "Length": length,
@@ -131,11 +107,12 @@ def compute_metric_over_syn(
             "Anomalies average length": float(anomalies_avg_length),
         })
 
-        if metric == 'ff_vus_pr':
-            metric_value, ff_vus_time_analysis = vus_numpy.compute(label, score)
+        if metric == 'ff_vus_pr' or metric == 'ff_vus_pr_gpu': 
+            if metric == 'ff_vus_pr_gpu':
+                label, score = torch.tensor(label), torch.tensor(score)
+            metric_value, ff_vus_time_analysis = ff_vus.compute(label, score)
             metric_time = sum([ff_vus_time_analysis[key] for key in ff_vus_time_analysis.keys()])
             results[-1].update(ff_vus_time_analysis)
-
         else:
             metric_value, metric_time = time_it(sylli_get_metrics)(label, score, metric, slope_size)
 
@@ -145,7 +122,6 @@ def compute_metric_over_syn(
         })
         
     return pd.DataFrame(results)
-
 
 def compute_metric_over_dataset(
         dataset,
@@ -159,10 +135,13 @@ def compute_metric_over_dataset(
 ):
     # Load dataset
     if dataset == 'tsb':
-        df = compute_metric_over_tsb(metric, slope_size, step, slopes, existence, conf_matrix, testing)
+        filenames, labels, scores, _ = load_tsb(testing=testing, return_random=True)
     elif 'synthetic' in  dataset:
-        df = compute_metric_over_syn(dataset, metric, slope_size, step, slopes, existence, conf_matrix, testing)
-        dataset = dataset.split('/')[-1]
+        filenames, labels, scores = load_synthetic(dataset=dataset)
+    else:
+        raise ValueError(f"Wrong argument for dataset: {dataset}")
+
+    df = compute_metric(filenames,labels, scores, metric, slope_size, step, slopes, existence, conf_matrix)
 
     # Generate saving path and results file name
     filename = f"{dataset}_{metric.replace('_', '-').upper()}"
@@ -174,7 +153,9 @@ def compute_metric_over_dataset(
     save_path = os.path.join('experiments', '10_04_2025', 'results', filename)
 
     # Save the results
-    df.to_csv(save_path)
+    print(save_path)
+    print(df)
+    # df.to_csv(save_path)
 
     return df
 
@@ -185,7 +166,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument('--dataset', type=str, required=True, help='Path or name of the dataset')
-    parser.add_argument('--metric', type=str, required=True, choices=['ff_vus_pr', 'vus_pr', 'rf', 'affiliation', 'range_auc_pr', 'auc_pr'], 
+    parser.add_argument('--metric', type=str, required=True, choices=['ff_vus_pr', 'ff_vus_pr_gpu', 'vus_pr', 'rf', 'affiliation', 'range_auc_pr', 'auc_pr'], 
                         help='Metric to compute (e.g., VUS, AUC-PR, etc.)')
     parser.add_argument('--slope_size', type=int, default=100, help='Number of slopes used for computation')
     parser.add_argument('--step', type=int, default=1, help='Step size between slopes')

@@ -125,3 +125,46 @@ def compute_slopes_and_compare(labels, compute_slope_func, compute_slope_precomp
 
     if min_dif > tol or max_dif > tol or mean_dif > tol :
         visualize_differences(labels, slopes_func, slopes_pre, tol)
+    
+def get_anomalies_coordinates(label, include_edges=True):
+    '''
+    Return the starting and ending points of all anomalies in label
+    If edges is True, then return the first and last point,
+    only if anomalies exist in the very beggining or very end.
+    '''
+    diff = np.diff(label)
+    start_points = np.where(diff == 1)[0] + 1
+    end_points = np.where(diff == -1)[0]
+
+    if include_edges:
+        if label[-1]:
+            end_points = np.append(end_points, len(label) - 1)
+        if label[0]:
+            start_points = np.append([0], start_points)
+        if start_points.shape != end_points.shape:
+            raise ValueError(f'The number of start and end points of anomalies does not match, {start_points} != {end_points}')
+        
+    return start_points, end_points
+
+def analyze_label(label):
+    """
+    Analyze a binary time series anomaly label vector
+    and return basic metrics.
+
+    Args:
+        label (np.ndarray): a 1D numpy array of 0s and 1s
+    Return:
+        length (int): total length of the label
+        n_anomalies (int): number of anomalies in the label
+        anomalies_avg_length (int): the average length of the anomalies
+    """
+    length = len(label)
+
+    start_points, end_points = get_anomalies_coordinates(label)
+    end_points += 1     # end points are exclusive, so this is necessary
+    
+    n_anomalies = start_points.shape[0]
+    anomaly_lengths = np.array([e - s for s, e in zip(start_points, end_points)])
+    anomalies_avg_length = np.mean(anomaly_lengths)
+    
+    return length, n_anomalies, anomalies_avg_length
