@@ -29,8 +29,8 @@ def load_tsb(testing=False):
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        labels = labels[:10]
-        filenames = filenames[:10]
+        labels = labels[:100]
+        filenames = filenames[:100]
 
     scoreloader = Scoreloader('data/scores')
     detectors = scoreloader.get_detector_names()
