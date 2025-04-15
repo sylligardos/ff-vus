@@ -7,6 +7,7 @@
 
 
 from vus.vus_numpy import VUSNumpy
+from vus.vus_torch import VUSTorch
 
 from utils.scoreloader import Scoreloader
 from utils.dataloader import Dataloader
@@ -71,6 +72,13 @@ def evaluate_ffvus_random(testing):
         interpolation=interpolation,
     )
 
+    ff_vus_torch = VUSTorch(
+        slope_size=slope_size, 
+        step=1,
+        zita=zita, 
+        conf_matrix=conf_matrix,
+    )
+
     print(f">> Current settings: Slope size {slope_size}, step {step}, slopes {slopes}, existence {existence}, conf. matrix {conf_matrix}, interpolation {interpolation}")
     for i, (filename, label, curr_scores) in enumerate(zip(filenames, labels, scores)):
         detector_idx = np.random.randint(0, 11)
@@ -110,6 +118,14 @@ def evaluate_ffvus_random(testing):
             'FF-VUS-PR time': ff_vus_time,
         })
         curr_result.update(ff_vus_time_analysis)
+        
+        ff_vus_pr_gpu, ff_vus_gpu_time_analysis = ff_vus_torch.compute(label, score)
+        ff_vus_gpu_time = sum([ff_vus_gpu_time_analysis[key] for key in ff_vus_gpu_time_analysis.keys()])
+        curr_result.update({
+            'FF-VUS-PR': ff_vus_pr_gpu,
+            'FF-VUS-PR time': ff_vus_gpu_time,
+        })
+        curr_result.update(ff_vus_gpu_time_analysis)
 
         print(f"({i}) AUC-PR - FF-AUC-PR: {abs(auc_pr - ff_auc_pr):.5f}, VUS-PR - FF-VUS-PR: {abs(vus_pr - ff_vus_pr):.5f}, AUC Slow down: {(ff_auc_time / auc_pr_time):.2f}, VUS Speed up: {(vus_time / ff_vus_time):.2f}, Length: {label.shape[0]}")
         # print(f">> AUC-PR: {auc_pr:.3f}, FF AUC-PR: {ff_auc_pr:.3f}, VUS-PR: {vus_pr:.3f}, FF VUS-PR: {ff_vus_pr:.3f}")
