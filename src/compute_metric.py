@@ -111,7 +111,8 @@ def compute_metric(
 
         if metric == 'ff_vus_pr' or metric == 'ff_vus_pr_gpu': 
             if metric == 'ff_vus_pr_gpu':
-                label, score = torch.tensor(label), torch.tensor(score)
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                label, score = torch.tensor(label, device=device), torch.tensor(score, device=device)
                 print(label.device)
             metric_value, ff_vus_time_analysis = ff_vus.compute(label, score)
             metric_time = sum([ff_vus_time_analysis[key] for key in ff_vus_time_analysis.keys()])
