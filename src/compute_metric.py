@@ -157,6 +157,7 @@ def compute_metric_over_dataset(
     # Save the results
     print(save_path)
     print(df)
+    print(f"Average computation time: {df.iloc[:, -1].mean():.3f} seconds")
     if not testing:
         df.to_csv(save_path)
 
