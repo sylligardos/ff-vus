@@ -29,8 +29,8 @@ def load_tsb(testing=False):
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        labels = labels[:100]
-        filenames = filenames[:100]
+        labels = labels[:10]
+        filenames = filenames[:10]
 
     scoreloader = Scoreloader('data/scores')
     detectors = scoreloader.get_detector_names()
@@ -112,6 +112,7 @@ def compute_metric(
         if metric == 'ff_vus_pr' or metric == 'ff_vus_pr_gpu': 
             if metric == 'ff_vus_pr_gpu':
                 label, score = torch.tensor(label), torch.tensor(score)
+                print(label.device)
             metric_value, ff_vus_time_analysis = ff_vus.compute(label, score)
             metric_time = sum([ff_vus_time_analysis[key] for key in ff_vus_time_analysis.keys()])
             results[-1].update(ff_vus_time_analysis)
