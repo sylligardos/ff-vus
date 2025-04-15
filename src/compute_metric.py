@@ -25,7 +25,7 @@ import torch
 def load_tsb(testing=False):
     # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['Occupancy'] if testing else dataloader.get_dataset_names()
+    datasets = ['KDD21'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
