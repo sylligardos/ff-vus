@@ -174,6 +174,52 @@ class VUSTorch():
 
         return f_pos
     
+    def compute_existence_oom(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+        """
+        PyTorch version of the existence matrix computation.
+
+        Args:
+            labels: Tensor of shape [B, T], binary anomaly labels for each example.
+            score_mask: Tensor of shape [S, T], score mask over time for each slope.
+
+        Returns:
+            Tensor of shape [B, S] representing existence score (fraction of anomalies found).
+        """
+        device = labels.device
+
+        # Compute mask for relevant points
+        mask = self._create_safe_mask(labels[0], pos)
+        labels = labels[:, mask]
+        score_mask = score_mask[:, mask]
+
+        # Normalize labels to binary (0 or 1)
+        norm_labels = (labels > 0).int()          # shape: [B, T']
+
+        # Compute step function (stairs)
+        diff = torch.diff(norm_labels, dim=1, prepend=torch.zeros((norm_labels.size(0), 1), device=device))
+        diff = torch.clamp(diff, min=0, max=1)    # capture only start of anomalies
+        stairs = torch.cumsum(diff, dim=1)
+        labels_stairs = norm_labels * stairs      # anomaly position with staircase encoding
+
+        # Multiply each score with every labeled anomaly step
+        score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]
+
+        # Cumulative max along the time axis
+        cm = torch.cummax(score_hat, dim=2).values  # shape: [B, S, T']
+
+        # Compute differences along time and normalize
+        cm_diff = torch.diff(cm, dim=2)
+        cm_diff_norm = torch.clamp(cm_diff - 1, min=0)
+
+        # Total anomalies and missed anomalies
+        total_anomalies = stairs[:, -1][:, None]
+        final_anomalies_missed = total_anomalies - cm[:, :, -1]
+        n_anomalies_not_found = torch.sum(cm_diff_norm, dim=2) + final_anomalies_missed
+        n_anomalies_found = total_anomalies - n_anomalies_not_found
+
+        existence = n_anomalies_found / total_anomalies
+        return existence
+
     def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
         """
         PyTorch version of the existence matrix computation.
@@ -204,6 +250,7 @@ class VUSTorch():
         exit()
         # Multiply each score with every labeled anomaly step
         score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]
+        print(score_hat.shape, score_hat.element_size(), score_hat.nelement(), score_hat.element_size() * score_hat.nelement())
 
         # Cumulative max along the time axis
         cm = torch.cummax(score_hat, dim=2).values  # shape: [B, S, T']
