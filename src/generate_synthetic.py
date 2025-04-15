@@ -90,7 +90,7 @@ def generate_score_from_labels(label, start_points, end_points, detection_prob=0
     return np.clip(score, 0, 1)
 
 
-def generate_synthetic_dataset(
+def generate_synthetic(
     n_timeseries=10,
     ts_length=1000,
     n_anomalies=10,
@@ -168,7 +168,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    generate_synthetic_dataset(
+    generate_synthetic(
         n_timeseries=args.n_timeseries,
         ts_length=args.ts_length,
         n_anomalies=args.n_anomalies,

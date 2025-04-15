@@ -5,15 +5,13 @@
 @what: FF-VUS
 """
 
-from src.utils.utils import time_it, compute_slopes_and_compare, visualize_differences_1d, compare_vectors
+from utils.utils import time_it
 
 import numpy as np
 import math
 from skimage.util.shape import view_as_windows as viewW
 import matplotlib.pyplot as plt
 import seaborn as sns
-import time
-from scipy.special import digamma
 
 
 class VUSNumpy():
@@ -29,7 +27,6 @@ class VUSNumpy():
         ):
         """
         Initialize the VUS metric.
-        TODO: Instead of saving the variables you can save the appropriate functions in the variables instead of
 
         Args:
             TODO: Write the arguments description when done
@@ -95,7 +92,7 @@ class VUSNumpy():
 
         thresholds, time_thresholds = time_it(self.get_unique_thresholds)(score)
         sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
-        
+
         labels, time_slopes = time_it(self.add_slopes)(label)
         existence, time_existence = time_it(self.compute_existence)(labels, sm, score, thresholds)
         (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
@@ -108,7 +105,7 @@ class VUSNumpy():
             "Slopes time": time_slopes,
             "Existence time": time_existence,
             "Confusion matrix time": time_confusion,
-            "Precision recall curve time": time_thresholds,
+            "Precision recall curve time": time_pr_rec,
             "Integral time": time_integral,
         }
 
@@ -126,7 +123,7 @@ class VUSNumpy():
         than the bigger slope. This allows us to mask the label safely, without changing anything in the implementation.
         """
 
-        pos = self._distance_from_anomaly(label)
+        pos = self.distance_from_anomaly(label)
         mask = pos <= (self.slope_size + 1)
         return np.logical_or(mask, label)
     
@@ -165,7 +162,7 @@ class VUSNumpy():
 
         return shifted_slopes
     
-    def _distance_from_anomaly(self, label, clip=False):
+    def distance_from_anomaly(self, label, clip=False):
         '''
         For every point in the label, returns a time series that shows the distance
         of that point to its closest anomaly. Compute the distance of each point 
@@ -206,39 +203,6 @@ class VUSNumpy():
                 raise ValueError(f'The number of start and end points of anomalies does not match, {start_points} != {end_points}')
             
         return start_points, end_points
-    
-    def harmonic_series(self, n):
-        """
-        Approximate the nth harmonic number H_n using the Euler-Mascheroni approximation.
-        
-        Args:
-            n (int): The number of terms in the harmonic series.
-
-        Returns:
-            float: Approximated value of the harmonic series.
-        """
-        return digamma(n + 1) + np.euler_gamma
-
-    def add_slope_approximate(self, label):
-        """
-        This implementation of approximating the mean slope fast is not correct yet.
-        Even, the speed up is 2-3 times faster for CPUs so maybe it's not worth it.
-        
-        There is no (up to now) easy/fast way to approximate the mean of the slopes that is 
-        significantly faster than just actually computing them.
-        """
-        pos = self._distance_from_anomaly(label)
-        mask = np.where(np.logical_and((pos < self.n_slopes), (pos > 0))) 
-        h_l = self.harmonic_series(self.slope_size)
-        # mean_slope = np.mean(self.neg_slopes, axis=0)
-
-        slope = np.zeros(label.shape)
-        slope[mask] = (self.slope_size - pos[mask] + 1) * self.zita + (1 - self.zita) * (h_l - self.harmonic_series(pos[mask] - 1))
-        slope /= self.n_slopes
-        # slope[(self.slope_size - pos) < 0] = 0
-        slope[np.where(label.astype(bool))] = 1
-
-        return slope
 
     def _slope_function(self, label, pos):
         """
@@ -255,7 +219,7 @@ class VUSNumpy():
             TODO
                 """
 
-        valid_mask = (self.slope_size - pos) >= 0 
+        valid_mask = (self.slope_size - pos) >= 0
         slope_values = self.slope_values[1:, None]
         pos = pos[None, :]
 
@@ -275,7 +239,7 @@ class VUSNumpy():
         The pos part requires about 10% of the total execution time.
         """
 
-        pos = self._distance_from_anomaly(label)
+        pos = self.distance_from_anomaly(label)
         slopes = self._slope_function(label, pos)
         
         return slopes
@@ -430,9 +394,8 @@ class VUSNumpy():
         labels = labels[:, mask]
         score_mask = score_mask[:, mask]
 
-        # Normalize labels to binary (0 or 1)
+        # Normalize labels to 0 or 1
         norm_labels = (labels > 0).astype(np.int8)
-        score_mask = score_mask
 
         # Compute step function (stairs)
         diff = np.diff(norm_labels, prepend=np.zeros((norm_labels.shape[0], 1)), axis=1)
@@ -470,6 +433,16 @@ class VUSNumpy():
         else:
             conf_matrix = self.conf_matrix_dyn_plus(labels, sm)
         fn, tp, positives = conf_matrix
+        
+        # conf_matrix = self.conf_matrix_dyn(labels, sm)
+        # conf_matrix_1 = self.conf_matrix_dyn_plus(labels, sm)
+        # fn, tp, positives = conf_matrix
+        # fn_1, tp_1, positives_1 = conf_matrix_1
+        # print(tp)
+        # # print(np.mean(tp - tp_1), np.max(tp - tp_1), np.all(tp == tp_1))
+        # # print(np.mean(fn - fn_1), np.max(fn - fn_1), np.all(fn == fn_1))
+        # # print(np.mean(positives - positives_1), np.max(positives - positives_1), np.all(positives == positives_1))
+        # exit()
 
         fp = sm.sum(axis=1) - tp
         negatives = labels[0].shape[0] - positives
@@ -495,7 +468,7 @@ class VUSNumpy():
         masked_sm_inv = ~masked_sm
 
         true_positives = np.matmul(masked_labels, masked_sm.T)
-        false_negatives = np.matmul(masked_labels[0], masked_sm_inv.T)[:, np.newaxis].T
+        false_negatives = np.matmul(masked_labels[0], masked_sm_inv.T)[None, :]
 
         positives = ((true_positives + false_negatives) + masked_labels[0].sum()) / 2
 
@@ -564,3 +537,37 @@ class VUSNumpy():
         anomalies_avg_length = np.mean(anomaly_lengths)
         
         return length, n_anomalies, anomalies_avg_length
+    
+    # An attempt to make a faster average version but it's not worth it check desc.
+    # def harmonic_series(self, n):
+    #     """
+    #     Approximate the nth harmonic number H_n using the Euler-Mascheroni approximation.
+        
+    #     Args:
+    #         n (int): The number of terms in the harmonic series.
+
+    #     Returns:
+    #         float: Approximated value of the harmonic series.
+    #     """
+    #     return digamma(n + 1) + np.euler_gamma
+
+    # def add_slope_approximate(self, label):
+    #     """
+    #     This implementation of approximating the mean slope fast is not correct yet.
+    #     Even, the speed up is 2-3 times faster for CPUs so maybe it's not worth it.
+        
+    #     There is no (up to now) easy/fast way to approximate the mean of the slopes that is 
+    #     significantly faster than just actually computing them.
+    #     """
+    #     pos = self.distance_from_anomaly(label)
+    #     mask = np.where(np.logical_and((pos < self.n_slopes), (pos > 0))) 
+    #     h_l = self.harmonic_series(self.slope_size)
+    #     # mean_slope = np.mean(self.neg_slopes, axis=0)
+
+    #     slope = np.zeros(label.shape)
+    #     slope[mask] = (self.slope_size - pos[mask] + 1) * self.zita + (1 - self.zita) * (h_l - self.harmonic_series(pos[mask] - 1))
+    #     slope /= self.n_slopes
+    #     # slope[(self.slope_size - pos) < 0] = 0
+    #     slope[np.where(label.astype(bool))] = 1
+
+    #     return slope

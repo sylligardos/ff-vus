@@ -46,7 +46,7 @@ def create_shell_scripts():
                 "existence": ['None', 'trivial', 'optimized'], #, 'matrix'
                 "conf_matrix": ['trivial', 'dynamic', 'dynamic_plus'],
             },
-            "rules": [                
+            "rules": [
                 # Rule 1: If metric is not in the three allowed ones, only the first value of all other args is allowed
                 # "True if 'metric' in ['ff_vus_pr', 'range_auc_pr', 'vus_pr'] and (slope_size == 0 and step == 1 and 'slopes' == 'precomputed' and 'existence' == 'None' and 'conf_matrix' == 'trivial') else False",
                 # Rule 2: If metric is in ['range_auc_pr', 'vus_pr'], allow all slope_size but only first for the rest
