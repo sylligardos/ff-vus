@@ -17,7 +17,8 @@ class VUSTorch():
             slope_size=100, 
             step=1, 
             zita=(1/torch.sqrt(torch.tensor(2))), 
-            conf_matrix='dynamic', 
+            conf_matrix='dynamic',
+            device=None
         ):
         """
         Initialize the torch version of the VUS metric.
@@ -32,11 +33,16 @@ class VUSTorch():
         if zita < 0 and zita > 1:
             raise ValueError(f"Error with the zita: {zita}. It should be a value between 0 and 1.")
         
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if device == 'cpu':
+            print('You are using the GPU version of VUS on a CPU. If this is intended you can try the lighter numpy version!')
+
         self.slope_size = slope_size
         self.step = step
         self.zita = zita
         
-        self.slope_values = torch.arange(start=0, end=self.slope_size + 1, step=self.step)
+        self.slope_values = torch.arange(start=0, end=self.slope_size + 1, step=self.step, device=device)
         self.n_slopes = self.slope_values.shape[0]
 
         conf_matrix_args = ['dynamic', 'dynamic_plus']

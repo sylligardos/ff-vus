@@ -25,12 +25,12 @@ import torch
 def load_tsb(testing=False):
     # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['KDD21'] if testing else dataloader.get_dataset_names()
+    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
-    if testing:
-        labels = labels[:10]
-        filenames = filenames[:10]
+    # if testing:
+    #     labels = labels[:10]
+    #     filenames = filenames[:10]
 
     scoreloader = Scoreloader('data/scores')
     detectors = scoreloader.get_detector_names()
@@ -94,10 +94,12 @@ def compute_metric(
             conf_matrix=conf_matrix,
         )
     elif metric == 'ff_vus_pr_gpu':
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         ff_vus = VUSTorch(
             slope_size=slope_size, 
             step=step,
             conf_matrix=conf_matrix,
+            device=device,
         )
 
     for filename, label, score in tqdm(zip(filenames, labels, scores), desc='Computing metric', total=len(labels)):
@@ -111,9 +113,8 @@ def compute_metric(
 
         if metric == 'ff_vus_pr' or metric == 'ff_vus_pr_gpu': 
             if metric == 'ff_vus_pr_gpu':
-                device = 'cuda' if torch.cuda.is_available() else 'cpu'
                 label, score = torch.tensor(label, device=device), torch.tensor(score, device=device)
-                print(label.device)
+                print("torch.cuda.memory_allocated: %fGB"%(torch.cuda.memory_allocated(0)/1024/1024/1024))
             metric_value, ff_vus_time_analysis = ff_vus.compute(label, score)
             metric_time = sum([ff_vus_time_analysis[key] for key in ff_vus_time_analysis.keys()])
             results[-1].update(ff_vus_time_analysis)
