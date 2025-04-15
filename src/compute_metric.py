@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 
-def load_tsb(testing=False, return_random=True):
+def load_tsb(testing=False):
     # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
     datasets = ['Occupancy'] if testing else dataloader.get_dataset_names()
@@ -40,9 +40,11 @@ def load_tsb(testing=False, return_random=True):
         raise ValueError(f'Size of scores and labels is not the same, scores: {len(scores)}, labels: {len(labels)}, filenames: {len(filenames)}')
 
     # Pick a random detector score for each label
-    if return_random:
+    if testing:
+        detectors_idx = np.zeros(len(labels)).astype(int)
+    else:    
         detectors_idx = np.random.randint(0, len(detectors), size=len(labels))
-        scores = [score[:, idx] for score, idx in zip(scores, detectors_idx)]
+    scores = [score[:, idx] for score, idx in zip(scores, detectors_idx)]
 
     detectors_selected = [detectors[idx] for idx in detectors_idx]
 
@@ -135,7 +137,7 @@ def compute_metric_over_dataset(
 ):
     # Load dataset
     if dataset == 'tsb':
-        filenames, labels, scores, _ = load_tsb(testing=testing, return_random=True)
+        filenames, labels, scores, _ = load_tsb(testing=testing)
     elif 'synthetic' in  dataset:
         filenames, labels, scores = load_synthetic(dataset=dataset)
     else:
@@ -155,7 +157,8 @@ def compute_metric_over_dataset(
     # Save the results
     print(save_path)
     print(df)
-    # df.to_csv(save_path)
+    if not testing:
+        df.to_csv(save_path)
 
     return df
 
