@@ -200,7 +200,8 @@ class VUSTorch():
         diff = torch.clamp(diff, min=0, max=1)    # capture only start of anomalies
         stairs = torch.cumsum(diff, dim=1)
         labels_stairs = norm_labels * stairs      # anomaly position with staircase encoding
-
+        print(labels_stairs.shape, score_mask.shape)
+        exit()
         # Multiply each score with every labeled anomaly step
         score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]
 
