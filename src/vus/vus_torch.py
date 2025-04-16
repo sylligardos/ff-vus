@@ -125,8 +125,8 @@ class VUSTorch():
     
     def distance_from_anomaly(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor, clip: bool = False) -> torch.Tensor:
         """
-        For every point in the label, returns a time series that shows the distance
-        of that point to its closest anomaly. Uses PyTorch for GPU compatibility.
+        Computes distance to closest anomaly boundary for each point.
+        Fully vectorized, avoids full [length x num_anomalies] expansion by chunking.
         """
         device = label.device
         length = label.size(0)
@@ -134,22 +134,27 @@ class VUSTorch():
         if start_points.numel() == 0 and end_points.numel() == 0:
             return torch.full((length,), float('inf'), device=device)
 
-        anomaly_boundaries = torch.cat([start_points, end_points])
-        indices = torch.arange(length, device=device)[:, None]
+        anomaly_boundaries = torch.cat([start_points, end_points]).to(device)
+        indices = torch.arange(length, device=device)  # [L]
 
-        distances = torch.abs(indices - anomaly_boundaries)
-        print(anomaly_boundaries)
-        print(distances.shape)
-        sns.lineplot(distances)
-        plt.show()
-        # exit()
-        pos = torch.min(distances, dim=1).values
+        # Pre-allocate result
+        min_distances = torch.full((length,), float('inf'), device=device)
+
+        # Set chunk size to avoid memory explosion
+        chunk_size = 10  # you can increase this if you have more memory
+
+        for chunk in anomaly_boundaries.split(chunk_size):
+            dists = torch.abs(indices[:, None] - chunk[None, :])  # [L, C]
+            dists_min = dists.min(dim=1).values  # [L]
+            min_distances = torch.minimum(min_distances, dists_min)
+
         if clip:
-            pos = pos.clone()
-            pos[label.bool()] = 0
-            pos = torch.clamp(pos, max=self.slope_size)
+            min_distances = min_distances.clone()
+            min_distances[label.bool()] = 0
+            min_distances = torch.clamp(min_distances, max=self.slope_size)
 
-        return pos
+        del 
+        return min_distances
     
     def add_slopes(self, label: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
         """
@@ -162,13 +167,13 @@ class VUSTorch():
         Returns:
             Tensor of shape (n_slopes, T) with transformed slope values.
         """
+
         device = label.device
         T = label.size(0)
 
         valid_mask = (self.slope_size - pos) >= 0
         slope_values = self.slope_values[1:, None]
         pos = pos[None, :]
-
         f_pos = torch.zeros((self.n_slopes, T), device=device)
         f_pos[0] = label
 
@@ -178,52 +183,6 @@ class VUSTorch():
         f_pos[1:, label.bool()] = 1
 
         return f_pos
-    
-    def compute_existence_oom(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
-        """
-        PyTorch version of the existence matrix computation.
-
-        Args:
-            labels: Tensor of shape [B, T], binary anomaly labels for each example.
-            score_mask: Tensor of shape [S, T], score mask over time for each slope.
-
-        Returns:
-            Tensor of shape [B, S] representing existence score (fraction of anomalies found).
-        """
-        device = labels.device
-
-        # Compute mask for relevant points
-        mask = self._create_safe_mask(labels[0], pos)
-        labels = labels[:, mask]
-        score_mask = score_mask[:, mask]
-
-        # Normalize labels to binary (0 or 1)
-        norm_labels = (labels > 0).int()          # shape: [B, T']
-
-        # Compute step function (stairs)
-        diff = torch.diff(norm_labels, dim=1, prepend=torch.zeros((norm_labels.size(0), 1), device=device))
-        diff = torch.clamp(diff, min=0, max=1)    # capture only start of anomalies
-        stairs = torch.cumsum(diff, dim=1)
-        labels_stairs = norm_labels * stairs      # anomaly position with staircase encoding
-
-        # Multiply each score with every labeled anomaly step
-        score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]
-
-        # Cumulative max along the time axis
-        cm = torch.cummax(score_hat, dim=2).values  # shape: [B, S, T']
-
-        # Compute differences along time and normalize
-        cm_diff = torch.diff(cm, dim=2)
-        cm_diff_norm = torch.clamp(cm_diff - 1, min=0)
-
-        # Total anomalies and missed anomalies
-        total_anomalies = stairs[:, -1][:, None]
-        final_anomalies_missed = total_anomalies - cm[:, :, -1]
-        n_anomalies_not_found = torch.sum(cm_diff_norm, dim=2) + final_anomalies_missed
-        n_anomalies_found = total_anomalies - n_anomalies_not_found
-
-        existence = n_anomalies_found / total_anomalies
-        return existence
 
     def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor = None, max_memory_tokens: int = 1e+9) -> torch.Tensor:
         """
@@ -249,11 +208,11 @@ class VUSTorch():
         s, T = labels.shape
         t = score_mask.shape[0]
         if s * t * T > max_memory_tokens:
-            n_bytes = s * t * T
-            n_kB = n_bytes/1024
-            n_MB = n_kB/1024
-            n_GB = n_MB/1024
-            print(f"{n_bytes} bytes, {n_kB} kB, {n_MB} MB, {n_GB} GB")
+            # n_bytes = s * t * T
+            # n_kB = n_bytes/1024
+            # n_MB = n_kB/1024
+            # n_GB = n_MB/1024
+            # print(f"{n_bytes} bytes, {n_kB} kB, {n_MB} MB, {n_GB} GB")
             existence_0 = self.compute_existence(labels[0:1], score_mask)
             existence_s = self.compute_existence(labels[-1:], score_mask)
             
@@ -269,8 +228,7 @@ class VUSTorch():
         diff = torch.clamp(diff, min=0, max=1)    # capture only start of anomalies
         stairs = torch.cumsum(diff, dim=1)
         labels_stairs = norm_labels * stairs      # anomaly position with staircase encoding
-        print(labels_stairs.shape, score_mask.shape)
-        exit()
+
         # Multiply each score with every labeled anomaly step
         score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]
 

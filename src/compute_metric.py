@@ -25,7 +25,7 @@ import torch
 def load_tsb(testing=False):
     # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['YAHOO'] if testing else dataloader.get_dataset_names()
+    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
@@ -50,7 +50,7 @@ def load_tsb(testing=False):
 
     return filenames, labels, scores, detectors_selected
 
-def load_synthetic(dataset):
+def load_synthetic(dataset, testing=False):
     # Load dataset
     dataset_path = os.path.join('data', 'synthetic', dataset)
     csv_files = [x for x in os.listdir(dataset_path) if '.csv' in x]
@@ -64,7 +64,7 @@ def load_synthetic(dataset):
         score = data[:, 1]
         labels.append(label)
         scores.append(score)
-        break
+        if testing: break
 
     labels = np.array(labels)
     scores = np.array(scores)
@@ -95,7 +95,7 @@ def compute_metric(
             conf_matrix=conf_matrix,
         )
     elif metric == 'ff_vus_pr_gpu':
-        device = 'cpu' #'cuda' if torch.cuda.is_available() else 'cpu'
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         ff_vus = VUSTorch(
             slope_size=slope_size, 
             step=step,
@@ -142,7 +142,7 @@ def compute_metric_over_dataset(
     if dataset == 'tsb':
         filenames, labels, scores, _ = load_tsb(testing=testing)
     elif 'synthetic' in  dataset:
-        filenames, labels, scores = load_synthetic(dataset=dataset)
+        filenames, labels, scores = load_synthetic(dataset=dataset, testing=testing)
     else:
         raise ValueError(f"Wrong argument for dataset: {dataset}")
 
