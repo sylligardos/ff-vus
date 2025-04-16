@@ -138,6 +138,11 @@ class VUSTorch():
         indices = torch.arange(length, device=device)[:, None]
 
         distances = torch.abs(indices - anomaly_boundaries)
+        print(anomaly_boundaries)
+        print(distances.shape)
+        sns.lineplot(distances)
+        plt.show()
+        # exit()
         pos = torch.min(distances, dim=1).values
         if clip:
             pos = pos.clone()
@@ -220,23 +225,41 @@ class VUSTorch():
         existence = n_anomalies_found / total_anomalies
         return existence
 
-    def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+    def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor = None, max_memory_tokens: int = 1e+9) -> torch.Tensor:
         """
-        PyTorch version of the existence matrix computation.
+        PyTorch version of the existence matrix computation. This function uses an approximation fallback mechanism
+        in case the memory requirements exceed the limit set by 'max_memory_tokens'.
 
         Args:
-            labels: Tensor of shape [B, T], binary anomaly labels for each example.
-            score_mask: Tensor of shape [S, T], score mask over time for each slope.
+            labels: Tensor of shape [s, T], binary anomaly label one for each slope.
+            score_mask: Tensor of shape [t, T], score mask over every threshold.
 
         Returns:
-            Tensor of shape [B, S] representing existence score (fraction of anomalies found).
+            Tensor of shape [s, t] representing existence score (fraction of anomalies found).
         """
         device = labels.device
 
         # Compute mask for relevant points
-        mask = self._create_safe_mask(labels[0], pos)
-        labels = labels[:, mask]
-        score_mask = score_mask[:, mask]
+        if pos is not None:
+            mask = self._create_safe_mask(labels[0], pos)
+            labels = labels[:, mask]
+            score_mask = score_mask[:, mask]
+
+        # Check size and fallback if too big
+        s, T = labels.shape
+        t = score_mask.shape[0]
+        if s * t * T > max_memory_tokens:
+            n_bytes = s * t * T
+            n_kB = n_bytes/1024
+            n_MB = n_kB/1024
+            n_GB = n_MB/1024
+            print(f"{n_bytes} bytes, {n_kB} kB, {n_MB} MB, {n_GB} GB")
+            existence_0 = self.compute_existence(labels[0:1], score_mask)
+            existence_s = self.compute_existence(labels[-1:], score_mask)
+            
+            interp_weights = torch.linspace(0, 1, steps=s, device=device).view(1, -1)
+            existence = existence_0 + (existence_s - existence_0) * interp_weights.T
+            return existence
 
         # Normalize labels to binary (0 or 1)
         norm_labels = (labels > 0).int()          # shape: [B, T']
@@ -249,7 +272,6 @@ class VUSTorch():
 
         # Multiply each score with every labeled anomaly step
         score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]
-        print(score_hat.shape, score_hat.element_size(), score_hat.nelement(), score_hat.element_size() * score_hat.nelement())
 
         # Cumulative max along the time axis
         cm = torch.cummax(score_hat, dim=2).values  # shape: [B, S, T']

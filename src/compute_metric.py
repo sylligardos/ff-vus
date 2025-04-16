@@ -25,12 +25,12 @@ import torch
 def load_tsb(testing=False):
     # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
+    datasets = ['YAHOO'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
-    # if testing:
-    #     labels = labels[:10]
-    #     filenames = filenames[:10]
+    if testing:
+        labels = labels[:10]
+        filenames = filenames[:10]
 
     scoreloader = Scoreloader('data/scores')
     detectors = scoreloader.get_detector_names()
@@ -58,12 +58,13 @@ def load_synthetic(dataset):
     labels = []
     scores = []
 
-    for file in csv_files:
+    for file in tqdm(csv_files, desc="Loading synthetic"):
         data = np.loadtxt(os.path.join(dataset_path, file), delimiter=",")
         label = data[:, 0]
         score = data[:, 1]
         labels.append(label)
         scores.append(score)
+        break
 
     labels = np.array(labels)
     scores = np.array(scores)
@@ -94,7 +95,7 @@ def compute_metric(
             conf_matrix=conf_matrix,
         )
     elif metric == 'ff_vus_pr_gpu':
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device = 'cpu' #'cuda' if torch.cuda.is_available() else 'cpu'
         ff_vus = VUSTorch(
             slope_size=slope_size, 
             step=step,
