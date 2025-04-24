@@ -18,7 +18,8 @@ class VUSTorch():
             step=1, 
             zita=(1/torch.sqrt(torch.tensor(2))), 
             conf_matrix='dynamic',
-            device=None
+            device=None,
+            max_memory_tokens=None,
         ):
         """
         Initialize the torch version of the VUS metric.
@@ -52,18 +53,46 @@ class VUSTorch():
             self.conf_matrix_mode = conf_matrix
         else:
             raise ValueError(f"Unknown argument for conf_matrix: {conf_matrix}. 'conf_matrix' should be one of {conf_matrix_args}")
-    
+
+        if max_memory_tokens is None:
+            if device == 'cuda':
+                available_memory, total_memory = torch.cuda.mem_get_info()
+                self.max_memory_tokens = available_memory / 10000
+            else:
+                self.max_memory_tokens = 100e+9
+        else:
+            self.max_memory_tokens = max_memory_tokens
+
+
     def compute(self, label, score):
         """
         The main computing function of the metric
         
         TODO: Try smaller types when possible, e.g. thresholds. Is it worth it?
         """
+
+        (start_no_edges, end_no_edges), (start_with_edges, end_with_edges) = self.get_anomalies_coordinates_both(label)
         (thresholds, indices), time_thresholds = time_it(self.get_unique_thresholds)(score)
         sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
-        (start_no_edges, end_no_edges), (start_with_edges, end_with_edges) = self.get_anomalies_coordinates_both(label)
         pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges)
         
+
+        sloped_label_mem_size = self.n_slopes * len(label) * 4
+        if sloped_label_mem_size > self.max_memory_tokens:
+            print(f"Number of slopes: {self.n_slopes}, Label length: {len(label)}, Sloped label memory size: {sloped_label_mem_size/1024**3} GBs")
+            print("Switching to chunk computation")
+
+            # TODO:
+            # Use create_safe_mask and get_anomalies_coordinates to create find_safe_splits
+            safe_mask = self._create_safe_mask(label, pos)
+            _, (start_splits, end_splits) = self.get_anomalies_coordinates_both(safe_mask)
+
+            plt.plot(safe_mask.cpu().numpy()[200000: 300000])
+            plt.savefig('experiments/24_04_2025/test.png')
+            exit()
+
+        # Cut segments according to safe mask
+
         labels, time_slopes = time_it(self.add_slopes)(label, pos)
         existence, time_existence = time_it(self.compute_existence)(labels, sm, pos)
         (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
@@ -81,6 +110,14 @@ class VUSTorch():
         }
 
         return vus_pr, time_analysis
+
+    def compute_chunk():
+        """
+        Given a label and a score, follow the VUS-PR computation
+        up to the confusion matrix. This function provides easy integration
+        of computing VUS-PR in chunks
+        """
+        pass
     
     def get_score_mask(self, score, thresholds):
         return score >= thresholds[:, None]
@@ -138,46 +175,27 @@ class VUSTorch():
         anomaly_boundaries = torch.cat([start_points, end_points])
         indices = torch.arange(length, device=device)[:, None]
 
-        distances = torch.abs(indices - anomaly_boundaries)
-        pos = torch.min(distances, dim=1).values
+        pos = torch.full((length,), float('inf'), device=device)
+
+        pos_mem_size = len(anomaly_boundaries) * length * pos.element_size()
+        if pos_mem_size > self.max_memory_tokens:
+            n_chunks = (pos_mem_size // self.max_memory_tokens)
+            chunk_size = int(len(anomaly_boundaries) // n_chunks)
+
+            for chunk in anomaly_boundaries.split(chunk_size):
+                curr_distances = torch.abs(indices - chunk[None, :])
+                curr_min_distances = curr_distances.min(dim=1).values
+                pos = torch.minimum(pos, curr_min_distances)
+        else:
+            distances = torch.abs(indices - anomaly_boundaries)
+            pos = torch.min(distances, dim=1).values
+        
         if clip:
             pos = pos.clone()
             pos[label.bool()] = 0
             pos = torch.clamp(pos, max=self.slope_size)
 
         return pos
-    
-    def distance_from_anomaly_oom(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor, clip: bool = False) -> torch.Tensor:
-        """
-        Computes distance to closest anomaly boundary for each point.
-        Fully vectorized, avoids full [length x num_anomalies] expansion by chunking.
-        """
-        device = label.device
-        length = label.size(0)
-
-        if start_points.numel() == 0 and end_points.numel() == 0:
-            return torch.full((length,), float('inf'), device=device)
-
-        anomaly_boundaries = torch.cat([start_points, end_points]).to(device)
-        indices = torch.arange(length, device=device)  # [L]
-
-        # Pre-allocate result
-        min_distances = torch.full((length,), float('inf'), device=device)
-
-        # Set chunk size to avoid memory explosion
-        chunk_size = 10  # you can increase this if you have more memory
-
-        for chunk in anomaly_boundaries.split(chunk_size):
-            dists = torch.abs(indices[:, None] - chunk[None, :])  # [L, C]
-            dists_min = dists.min(dim=1).values  # [L]
-            min_distances = torch.minimum(min_distances, dists_min)
-
-        if clip:
-            min_distances = min_distances.clone()
-            min_distances[label.bool()] = 0
-            min_distances = torch.clamp(min_distances, max=self.slope_size)
-
-        return min_distances
     
     def add_slopes(self, label: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
         """
@@ -207,7 +225,7 @@ class VUSTorch():
 
         return f_pos
 
-    def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor = None, max_memory_tokens: int = 1e+9) -> torch.Tensor:
+    def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor = None) -> torch.Tensor:
         """
         PyTorch version of the existence matrix computation. This function uses an approximation fallback mechanism
         in case the memory requirements exceed the limit set by 'max_memory_tokens'.
@@ -230,7 +248,7 @@ class VUSTorch():
         # Check size and fallback if too big
         s, T = labels.shape
         t = score_mask.shape[0]
-        if s * t * T > max_memory_tokens:
+        if s * t * T > self.max_memory_tokens:
             existence_0 = self.compute_existence(labels[0:1], score_mask)
             existence_s = self.compute_existence(labels[-1:], score_mask)
             
@@ -239,13 +257,13 @@ class VUSTorch():
             return existence
 
         # Normalize labels to binary (0 or 1)
-        norm_labels = (labels > 0).int()          # shape: [B, T']
+        norm_labels = (labels > 0).int()
 
         # Compute step function (stairs)
         diff = torch.diff(norm_labels, dim=1, prepend=torch.zeros((norm_labels.size(0), 1), device=device))
-        diff = torch.clamp(diff, min=0, max=1)    # capture only start of anomalies
+        diff = torch.clamp(diff, min=0, max=1)
         stairs = torch.cumsum(diff, dim=1)
-        labels_stairs = norm_labels * stairs      # anomaly position with staircase encoding
+        labels_stairs = norm_labels * stairs
 
         # Multiply each score with every labeled anomaly step
         score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]
