@@ -31,9 +31,11 @@ class VUSNumpy():
         Args:
             TODO: Write the arguments description when done
         """
-        if slope_size < 0:
-            raise ValueError(f"Error with the slope_size: {slope_size}. It should be a positive value.")
-        if step < 0 or (slope_size % step) != 0:
+        if slope_size < 0 or step < 0:
+            raise ValueError(f"Error with the slope_size {slope_size} or step {step}. They should be positive values.")
+        if step == 0 and slope_size > 0:
+            raise ValueError(f"Error with step {step} and slope_size {slope_size}. Step can't be 0 with non-zero slope_size.")
+        if (step > 0 and slope_size > 0) and (slope_size % step) != 0:
             raise ValueError(f"Error with the step: {step}. It should be a positive value and a perfect divider of the slope_size.")
         if zita < 0 and zita > 1:
             raise ValueError(f"Error with the zita: {zita}. It should be a value between 0 and 1.")
@@ -42,7 +44,7 @@ class VUSNumpy():
         self.step = step
         self.zita = zita
         
-        self.slope_values = np.arange(self.slope_size + 1, step=self.step)
+        self.slope_values = np.arange(self.slope_size + 1, step=self.step) if step > 0 else np.array([0])
         self.n_slopes = self.slope_values.shape[0]
 
         slopes_args = ['precomputed', 'function']

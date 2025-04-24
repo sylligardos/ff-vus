@@ -26,9 +26,11 @@ class VUSTorch():
         Args:
             TODO: Write the arguments description when done
         """
-        if slope_size < 0:
-            raise ValueError(f"Error with the slope_size: {slope_size}. It should be a positive value.")
-        if step < 0 or (slope_size % step) != 0:
+        if slope_size < 0 or step < 0:
+            raise ValueError(f"Error with the slope_size {slope_size} or step {step}. They should be positive values.")
+        if step == 0 and slope_size > 0:
+            raise ValueError(f"Error with step {step} and slope_size {slope_size}. Step can't be 0 with non-zero slope_size.")
+        if (step > 0 and slope_size > 0) and (slope_size % step) != 0:
             raise ValueError(f"Error with the step: {step}. It should be a positive value and a perfect divider of the slope_size.")
         if zita < 0 and zita > 1:
             raise ValueError(f"Error with the zita: {zita}. It should be a value between 0 and 1.")
@@ -42,7 +44,7 @@ class VUSTorch():
         self.step = step
         self.zita = zita
         
-        self.slope_values = torch.arange(start=0, end=self.slope_size + 1, step=self.step, device=device)
+        self.slope_values = torch.arange(start=0, end=self.slope_size + 1, step=self.step, device=device) if step > 0 else torch.tensor([0])
         self.n_slopes = self.slope_values.shape[0]
 
         conf_matrix_args = ['dynamic', 'dynamic_plus']
@@ -125,6 +127,28 @@ class VUSTorch():
     
     def distance_from_anomaly(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor, clip: bool = False) -> torch.Tensor:
         """
+        Computes distance to closest anomaly boundary for each point. Uses PyTorch for GPU compatibility.
+        """
+        device = label.device
+        length = label.size(0)
+
+        if start_points.numel() == 0 and end_points.numel() == 0:
+            return torch.full((length,), float('inf'), device=device)
+
+        anomaly_boundaries = torch.cat([start_points, end_points])
+        indices = torch.arange(length, device=device)[:, None]
+
+        distances = torch.abs(indices - anomaly_boundaries)
+        pos = torch.min(distances, dim=1).values
+        if clip:
+            pos = pos.clone()
+            pos[label.bool()] = 0
+            pos = torch.clamp(pos, max=self.slope_size)
+
+        return pos
+    
+    def distance_from_anomaly_oom(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor, clip: bool = False) -> torch.Tensor:
+        """
         Computes distance to closest anomaly boundary for each point.
         Fully vectorized, avoids full [length x num_anomalies] expansion by chunking.
         """
@@ -153,7 +177,6 @@ class VUSTorch():
             min_distances[label.bool()] = 0
             min_distances = torch.clamp(min_distances, max=self.slope_size)
 
-        del 
         return min_distances
     
     def add_slopes(self, label: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
@@ -208,11 +231,6 @@ class VUSTorch():
         s, T = labels.shape
         t = score_mask.shape[0]
         if s * t * T > max_memory_tokens:
-            # n_bytes = s * t * T
-            # n_kB = n_bytes/1024
-            # n_MB = n_kB/1024
-            # n_GB = n_MB/1024
-            # print(f"{n_bytes} bytes, {n_kB} kB, {n_MB} MB, {n_GB} GB")
             existence_0 = self.compute_existence(labels[0:1], score_mask)
             existence_s = self.compute_existence(labels[-1:], score_mask)
             
