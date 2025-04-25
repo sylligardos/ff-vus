@@ -37,15 +37,17 @@ class VUSTorch():
             raise ValueError(f"Error with the zita: {zita}. It should be a value between 0 and 1.")
         
         if device is None:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        if device == 'cpu':
+            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        else:
+            self.device = device
+        if self.device == 'cpu':
             print('You are using the GPU version of VUS on a CPU. If this is intended you can try the lighter numpy version!')
 
         self.slope_size = slope_size
         self.step = step
         self.zita = zita
         
-        self.slope_values = torch.arange(start=0, end=self.slope_size + 1, step=self.step, device=device) if step > 0 else torch.tensor([0])
+        self.slope_values = torch.arange(start=0, end=self.slope_size + 1, step=self.step, device=self.device) if step > 0 else torch.tensor([0])
         self.n_slopes = self.slope_values.shape[0]
 
         conf_matrix_args = ['dynamic', 'dynamic_plus']
@@ -55,9 +57,9 @@ class VUSTorch():
             raise ValueError(f"Unknown argument for conf_matrix: {conf_matrix}. 'conf_matrix' should be one of {conf_matrix_args}")
 
         if max_memory_tokens is None:
-            if device == 'cuda':
+            if self.device == 'cuda':
                 available_memory, total_memory = torch.cuda.mem_get_info()
-                self.max_memory_tokens = available_memory / 10000
+                self.max_memory_tokens = available_memory / 50
             else:
                 self.max_memory_tokens = 100e+9
         else:
@@ -78,18 +80,11 @@ class VUSTorch():
         
 
         sloped_label_mem_size = self.n_slopes * len(label) * 4
-        if sloped_label_mem_size > self.max_memory_tokens:
+        if True or sloped_label_mem_size > self.max_memory_tokens:
             print(f"Number of slopes: {self.n_slopes}, Label length: {len(label)}, Sloped label memory size: {sloped_label_mem_size/1024**3} GBs")
-            print("Switching to chunk computation")
 
-            # TODO:
-            # Use create_safe_mask and get_anomalies_coordinates to create find_safe_splits
-            safe_mask = self._create_safe_mask(label, pos)
-            _, (start_splits, end_splits) = self.get_anomalies_coordinates_both(safe_mask)
-
-            plt.plot(safe_mask.cpu().numpy()[200000: 300000])
-            plt.savefig('experiments/24_04_2025/test.png')
-            exit()
+            n_splits = 5
+            split_points = self.find_safe_splits(label, pos, n_splits)
 
         # Cut segments according to safe mask
 
@@ -111,13 +106,43 @@ class VUSTorch():
 
         return vus_pr, time_analysis
 
-    def compute_chunk():
+    def find_safe_splits(self, label, pos, n_splits):
         """
-        Given a label and a score, follow the VUS-PR computation
-        up to the confusion matrix. This function provides easy integration
-        of computing VUS-PR in chunks
+        Finds approximately evenly spaced safe split points where pos is a local maximum
+        and far enough from anomalies.
         """
-        pass
+        valid_splits_mask = (pos > self.slope_size + 1) & (label != 1)
+        valid_splits = torch.nonzero(valid_splits_mask).squeeze(1) + 1
+
+        if valid_splits.numel() == 0 or n_splits <= 1:
+            return torch.tensor([], device=self.device)
+    
+        ideal_splits = torch.linspace(0, pos.shape[0] - 1, steps=n_splits + 1, device=self.device)[1:-1]        
+    
+        # Estimate required memory in bytes (for distance matrix)
+        estimated_bytes = valid_splits.numel() * len(ideal_splits) * valid_splits.element_size()
+        if estimated_bytes > self.max_memory_tokens:
+            selected_splits = []
+            chunk_size = max(1, len(ideal_splits) // (estimated_bytes // self.max_memory_tokens + 1))
+            for chunk in ideal_splits.split(chunk_size):
+                dists = torch.abs(valid_splits[:, None] - chunk[None, :])
+                min_indices = dists.argmin(dim=0)
+                selected_splits.append(valid_splits[min_indices])
+            selected_splits = torch.cat(selected_splits)
+        else:
+            dists = torch.abs(valid_splits[:, None] - ideal_splits[None, :])
+            min_indices = dists.argmin(dim=0)
+            selected_splits = valid_splits[min_indices]
+
+        plt.plot(label.cpu().numpy())
+        plt.vlines(selected_splits.cpu().numpy(), ymin=0, ymax=1, color='red', linewidth=3)
+        plt.savefig('experiments/24_04_2025/test.png')
+        
+        # Final safety check
+        assert torch.all(label[selected_splits] != 1), "Some selected splits fall inside anomalies!"
+        assert torch.all(pos[selected_splits] > self.slope_size + 1), "Some splits are too close to anomalies!"
+
+        return selected_splits.sort().values
     
     def get_score_mask(self, score, thresholds):
         return score >= thresholds[:, None]
