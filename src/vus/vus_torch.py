@@ -78,19 +78,59 @@ class VUSTorch():
         sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
         pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges)
         
-
         sloped_label_mem_size = self.n_slopes * len(label) * 4
         if True or sloped_label_mem_size > self.max_memory_tokens:
-            print(f"Number of slopes: {self.n_slopes}, Label length: {len(label)}, Sloped label memory size: {sloped_label_mem_size/1024**3} GBs")
-
+            n_splits = (sloped_label_mem_size // self.max_memory_tokens)
             n_splits = 5
+            print(f"n_splits: {n_splits}, n_slopes: {self.n_slopes}, Label length: {len(label)}, Sloped label memory size: {sloped_label_mem_size/1024**3} GBs")
+
             split_points = self.find_safe_splits(label, pos, n_splits)
 
-        # Cut segments according to safe mask
+            chunk_confusion = []
+            chunk_existence = []
+            time_slopes = 0.0
+            time_existence = 0.0
+            time_confusion = 0.0
+            anomalies_found = 0
+            total_anomalies = 0
 
-        labels, time_slopes = time_it(self.add_slopes)(label, pos)
-        existence, time_existence = time_it(self.compute_existence)(labels, sm, pos)
-        (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
+            prev_split = 0
+            for curr_split in split_points:
+                print(prev_split, curr_split)
+                label_chunk = label[prev_split:curr_split]
+                score_mask_chunk = sm[:, prev_split:curr_split]
+                pos_chunk = pos[prev_split:curr_split]
+                prev_split = curr_split
+                
+                plt.plot(label_chunk)
+                plt.plot(score[prev_split, curr_split])
+                plt.show()
+
+                labels_chunk, chunk_time_slope = time_it(self.add_slopes)(label_chunk, pos_chunk)
+                (anomalies_found_chunk, total_anomalies_chunk), chunk_time_existence = time_it(self.compute_existence)(labels_chunk, score_mask_chunk, pos_chunk, normalize=False)
+                (fp_c, fn_c, tp_c, pos_c, neg_c, fpr_c), chunk_time_conf = time_it(self.compute_confusion_matrix)(labels_chunk, score_mask_chunk)
+
+                chunk_confusion.append((fp_c, fn_c, tp_c, pos_c, neg_c, fpr_c))
+                anomalies_found += anomalies_found_chunk
+                total_anomalies += total_anomalies_chunk
+
+                time_slopes += chunk_time_slope
+                time_existence += chunk_time_existence
+                time_confusion += chunk_time_conf
+
+            # Combine all chunks
+            fp = sum(c[0] for c in chunk_confusion)
+            fn = sum(c[1] for c in chunk_confusion)
+            tp = sum(c[2] for c in chunk_confusion)
+            positives = sum(c[3] for c in chunk_confusion)
+            negatives = sum(c[4] for c in chunk_confusion)
+            fpr = sum(c[5] for c in chunk_confusion)
+            existence = anomalies_found / total_anomalies
+        else:
+            labels, time_slopes = time_it(self.add_slopes)(label, pos)
+            existence, time_existence = time_it(self.compute_existence)(labels, sm, pos)
+            (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
+        
         (precision, recall), time_pr_rec = time_it(self.precision_recall_curve)(tp, fp, positives, existence)
         vus_pr, time_integral = time_it(self.auc)(recall, precision)
         
@@ -111,13 +151,14 @@ class VUSTorch():
         Finds approximately evenly spaced safe split points where pos is a local maximum
         and far enough from anomalies.
         """
+        length = torch.tensor(pos.shape[0])
         valid_splits_mask = (pos > self.slope_size + 1) & (label != 1)
         valid_splits = torch.nonzero(valid_splits_mask).squeeze(1) + 1
 
         if valid_splits.numel() == 0 or n_splits <= 1:
             return torch.tensor([], device=self.device)
     
-        ideal_splits = torch.linspace(0, pos.shape[0] - 1, steps=n_splits + 1, device=self.device)[1:-1]        
+        ideal_splits = torch.linspace(0, length - 1, steps=n_splits + 1, device=self.device)[1:-1]        
     
         # Estimate required memory in bytes (for distance matrix)
         estimated_bytes = valid_splits.numel() * len(ideal_splits) * valid_splits.element_size()
@@ -133,16 +174,12 @@ class VUSTorch():
             dists = torch.abs(valid_splits[:, None] - ideal_splits[None, :])
             min_indices = dists.argmin(dim=0)
             selected_splits = valid_splits[min_indices]
-
-        plt.plot(label.cpu().numpy())
-        plt.vlines(selected_splits.cpu().numpy(), ymin=0, ymax=1, color='red', linewidth=3)
-        plt.savefig('experiments/24_04_2025/test.png')
         
         # Final safety check
         assert torch.all(label[selected_splits] != 1), "Some selected splits fall inside anomalies!"
         assert torch.all(pos[selected_splits] > self.slope_size + 1), "Some splits are too close to anomalies!"
 
-        return selected_splits.sort().values
+        return torch.cat((selected_splits.sort().values, length[None]), dim=0)
     
     def get_score_mask(self, score, thresholds):
         return score >= thresholds[:, None]
@@ -250,7 +287,7 @@ class VUSTorch():
 
         return f_pos
 
-    def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor = None) -> torch.Tensor:
+    def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor = None, normalize: bool = True) -> torch.Tensor:
         """
         PyTorch version of the existence matrix computation. This function uses an approximation fallback mechanism
         in case the memory requirements exceed the limit set by 'max_memory_tokens'.
@@ -269,6 +306,9 @@ class VUSTorch():
             mask = self._create_safe_mask(labels[0], pos)
             labels = labels[:, mask]
             score_mask = score_mask[:, mask]
+        
+        if labels.shape[1] < 1:
+            return 0 if normalize else (0, 0)
 
         # Check size and fallback if too big
         s, T = labels.shape
@@ -306,8 +346,11 @@ class VUSTorch():
         n_anomalies_not_found = torch.sum(cm_diff_norm, dim=2) + final_anomalies_missed
         n_anomalies_found = total_anomalies - n_anomalies_not_found
 
-        existence = n_anomalies_found / total_anomalies
-        return existence
+        if normalize:
+            return n_anomalies_found / total_anomalies
+        else:
+            return n_anomalies_found, total_anomalies
+
     
     def compute_confusion_matrix(self, labels: torch.Tensor, sm: torch.Tensor):
         if self.conf_matrix_mode == "dynamic":
