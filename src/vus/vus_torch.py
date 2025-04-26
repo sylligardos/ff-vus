@@ -79,10 +79,8 @@ class VUSTorch():
         pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges)
         
         sloped_label_mem_size = self.n_slopes * len(label) * 4
-        if True or sloped_label_mem_size > self.max_memory_tokens:
-            n_splits = (sloped_label_mem_size // self.max_memory_tokens)
-            n_splits = 10
-
+        if sloped_label_mem_size > self.max_memory_tokens:
+            n_splits = int(sloped_label_mem_size // self.max_memory_tokens)
             split_points = self.find_safe_splits(label, pos, n_splits)
 
             fp, tp, positives = 0, 0, 0
@@ -98,10 +96,6 @@ class VUSTorch():
                 score_mask_chunk = sm[:, prev_split:curr_split]
                 pos_chunk = pos[prev_split:curr_split]
                 prev_split = curr_split
-                
-                # plt.plot(label_chunk)
-                # plt.plot(score[prev_split, curr_split])
-                # plt.show()
 
                 labels_chunk, chunk_time_slope = time_it(self.add_slopes)(label_chunk, pos_chunk)
                 (anomalies_found_chunk, total_anomalies_chunk), chunk_time_existence = time_it(self.compute_existence)(labels_chunk, score_mask_chunk, pos_chunk, normalize=False)
@@ -144,13 +138,14 @@ class VUSTorch():
         Finds approximately evenly spaced safe split points where pos is a local maximum
         and far enough from anomalies.
         """
-        length = torch.tensor(pos.shape[0])
+        length = torch.tensor(pos.shape[0], device=self.device)
         valid_splits_mask = ~self._create_safe_mask(label, pos)
         valid_splits = torch.nonzero(valid_splits_mask).squeeze(1)
 
         if valid_splits.numel() == 0 or n_splits <= 1:
             return torch.tensor([], device=self.device)
-    
+
+        # print(length, n_splits)
         ideal_splits = torch.linspace(0, length - 1, steps=n_splits + 1, device=self.device)[1:-1]        
 
         dists = torch.abs(valid_splits[:, None] - ideal_splits[None, :])
