@@ -146,23 +146,32 @@ def compute_metric_over_dataset(
     else:
         raise ValueError(f"Wrong argument for dataset: {dataset}")
 
-    df = compute_metric(filenames,labels, scores, metric, slope_size, step, slopes, existence, conf_matrix)
+    if metric == 'all':
+        metrics = ['ff_vus_pr', 'ff_vus_pr_gpu', 'auc_pr', 'rf', 'affiliation', 'range_auc_pr', 'vus_pr']
+    else:
+        metrics = [metric]
 
-    # Generate saving path and results file name
-    filename = f"{dataset}_{metric.replace('_', '-').upper()}"
-    if metric in ['ff_vus_pr', 'range_auc_pr', 'vus_pr']:
-        filename += f"_{slope_size}"
-    if metric == 'ff_vus_pr':
-        filename += f"_{step}_{slopes}_{existence}_{conf_matrix}"
-    filename += ".csv"
-    save_path = os.path.join('experiments', '10_04_2025', 'results', filename)
+    for metric in metrics:
+        df = compute_metric(filenames, labels, scores, metric, slope_size, step, slopes, existence, conf_matrix)
 
-    # Save the results
-    print(save_path)
-    print(df)
-    print(f"Average computation time: {df.iloc[:, -1].mean():.3f} seconds")
-    if not testing:
-        df.to_csv(save_path)
+        # Generate saving path and results file name
+        filename = f"{dataset}_{metric.replace('_', '-').upper()}"
+
+        if metric in ['ff_vus_pr', 'ff_vus_pr_gpu', 'range_auc_pr', 'vus_pr']:
+            filename += f"_{slope_size}"
+        if metric in ['ff_vus_pr', 'ff_vus_pr_gpu']:
+            filename += f"_{step}_{conf_matrix}"
+        if metric == 'ff_vus_pr':
+            filename += f"_{slopes}_{existence}"
+        filename += ".csv"
+        save_path = os.path.join('experiments', '28_04_2025', 'results', filename)
+
+        # Save the results
+        print(save_path)
+        print(df)
+        print(f"Average computation time: {df.iloc[:, -1].mean():.3f} seconds")
+        if not testing:
+            df.to_csv(save_path)
 
     return df
 
@@ -173,7 +182,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument('--dataset', type=str, required=True, help='Path or name of the dataset')
-    parser.add_argument('--metric', type=str, required=True, choices=['ff_vus_pr', 'ff_vus_pr_gpu', 'vus_pr', 'rf', 'affiliation', 'range_auc_pr', 'auc_pr'], 
+    parser.add_argument('--metric', type=str, required=True, choices=['ff_vus_pr', 'ff_vus_pr_gpu', 'vus_pr', 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'all'], 
                         help='Metric to compute (e.g., VUS, AUC-PR, etc.)')
     parser.add_argument('--slope_size', type=int, default=100, help='Number of slopes used for computation')
     parser.add_argument('--step', type=int, default=1, help='Step size between slopes')
