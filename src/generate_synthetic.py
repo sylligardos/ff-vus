@@ -58,7 +58,7 @@ def generate_score_from_labels(label, start_points, end_points, detection_prob=0
         curr_length = end_points[i] - start_points[i]
         anomaly_lengths.append(curr_length)
         if detection[i]:
-            half_length = curr_length // 2
+            half_length = max(1, curr_length // 2)
 
             # Apply random lag
             lag = curr_length / lag_ratio
@@ -111,7 +111,7 @@ def generate_synthetic(
     
     for i in tqdm(range(n_timeseries), desc="Generating labels"):
         tic = time.time()
-        label, start_points, end_points = generate_synthetic_labels(length=ts_length, n_anomalies=n_anomalies)
+        label, start_points, end_points = generate_synthetic_labels(length=ts_length, n_anomalies=n_anomalies, avg_anomaly_length=avg_anomaly_length)
         score = generate_score_from_labels(label, start_points, end_points, detection_prob=0.9, lag_ratio=10, noise=0.03, false_positive_strength=0.05)
         toc = time.time()
 
