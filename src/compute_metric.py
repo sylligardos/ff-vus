@@ -12,7 +12,7 @@ from vus.vus_torch import VUSTorch
 from utils.scoreloader import Scoreloader
 from utils.dataloader import Dataloader
 from legacy.sylli_metrics import sylli_get_metrics
-from utils.utils import time_it, analyze_label
+from utils.utils import time_it, analyze_label, natural_keys
 
 import argparse
 import pandas as pd
@@ -103,7 +103,8 @@ def compute_metric(
             device=device,
         )
 
-    for filename, label, score in tqdm(zip(filenames, labels, scores), desc='Computing metric', total=len(labels)):
+    print(filenames)
+    for filename, label, score in tqdm(zip(filenames, labels, scores), desc=f'Computing {metric}', total=len(labels)):
         length, n_anomalies, anomalies_avg_length = analyze_label(label)
         results.append({
             "Time series": filename,
@@ -156,7 +157,6 @@ def compute_metric_over_dataset(
 
         # Generate saving path and results file name
         filename = f"{dataset}_{metric.replace('_', '-').upper()}"
-
         if metric in ['ff_vus_pr', 'ff_vus_pr_gpu', 'range_auc_pr', 'vus_pr']:
             filename += f"_{slope_size}"
         if metric in ['ff_vus_pr', 'ff_vus_pr_gpu']:
@@ -164,14 +164,27 @@ def compute_metric_over_dataset(
         if metric == 'ff_vus_pr':
             filename += f"_{slopes}_{existence}"
         filename += ".csv"
-        save_path = os.path.join('experiments', '28_04_2025', 'results', filename)
+        saving_path = os.path.join('experiments', '28_04_2025')
 
         # Save the results
-        print(save_path)
+        print(filename)
         print(df)
         print(f"Average computation time: {df.iloc[:, -1].mean():.3f} seconds")
+        
         if not testing:
-            df.to_csv(save_path)
+            df.to_csv(os.path.join(saving_path, 'results', filename))
+
+            info_df = pd.DataFrame([{
+                "Experiment": f"Compute {metric}",
+                "Number of results": len(df),
+                "Slope size": slope_size,
+                "Step": step,
+                "Slopes": slopes,
+                "Existence": existence,
+                "Confusion matrix": conf_matrix,
+                "Time": df.iloc[:, -1].sum(),
+            }])
+            info_df.to_csv(os.path.join(saving_path, 'info', filename), index=False)
 
     return df
 
@@ -196,13 +209,21 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    compute_metric_over_dataset(
-        dataset=args.dataset,
-        metric=args.metric,
-        slope_size=args.slope_size,
-        step=args.step,
-        slopes=args.slopes,
-        existence=args.existence,
-        conf_matrix=args.conf_matrix,
-        testing=args.testing
-    )
+    if args.dataset == 'all_synthetic':
+        synthetic_dir = os.path.join('data', 'synthetic')
+        datasets = os.listdir(synthetic_dir)
+    else:
+        datasets = [args.dataset]
+    datasets.sort(key=natural_keys)
+
+    for dataset in datasets:
+        compute_metric_over_dataset(
+            dataset=dataset,
+            metric=args.metric,
+            slope_size=args.slope_size,
+            step=args.step,
+            slopes=args.slopes,
+            existence=args.existence,
+            conf_matrix=args.conf_matrix,
+            testing=args.testing
+        )

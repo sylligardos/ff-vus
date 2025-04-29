@@ -11,6 +11,7 @@ import functools
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+import re
 
 def time_it(func):
     """Wrapper to measure execution time of a function."""
@@ -168,3 +169,9 @@ def analyze_label(label):
     anomalies_avg_length = np.mean(anomaly_lengths)
     
     return length, n_anomalies, anomalies_avg_length
+
+def natural_keys(text):
+    def atoi(text):
+        return int(text) if text.isdigit() else text
+
+    return [ atoi(c) for c in re.split(r'(\d+)', text) ]
