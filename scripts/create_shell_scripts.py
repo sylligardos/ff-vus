@@ -9,65 +9,62 @@ from templates import sh_templates
 
 import itertools
 import os
-from datetime import datetime
 from copy import deepcopy
 import re
 import numpy as np
 from tqdm import tqdm
 
 
-def atoi(text):
-    return int(text) if text.isdigit() else text
-
 def natural_keys(text):
-    '''
-    alist.sort(key=natural_keys) sorts in human order
-    http://nedbatchelder.com/blog/200712/human_sorting.html
-    (See Toothy's implementation in the comments)
-    '''
+    def atoi(text):
+        return int(text) if text.isdigit() else text
     return [ atoi(c) for c in re.split(r'(\d+)', text) ]
+
+experiments = {
+    "synthetic_data_generation": {
+        "job_name": "synthetic",
+        "environment": "ffvus",
+        "script_name": "src/generate_synthetic.py",
+        "args": {
+            "n_timeseries": [10],
+            "ts_length": [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000],
+            "n_anomalies": [3, 5, 10, 50, 100],
+            "avg_anomaly_length": [1, 10, 100, 1_000, 10_000],
+        },
+        "rules": ["True if n_anomalies * avg_anomaly_length <= 0.2 * ts_length else False"]
+    },
+
+    "compute_metric": {
+        "job_name": "compute_metric",
+        "environment": "ffvus",
+        "script_name": "src/compute_metric.py",
+        "args": {
+            "dataset": ['tsb'], # + os.listdir(os.path.join('data', 'synthetic')),
+            "metric": ['ff_vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr'
+            "slope_size": [0, 10, 100, 1000], #[0] + [int(x) for x in 2**np.arange(11)],
+            "step":  [1, 10, 100, 1000], #[int(x) for x in 2**np.arange(11)],
+            "slopes": ['precomputed'], #, 'function'
+            "existence": ['None', 'trivial', 'optimized'], #, 'matrix'
+            "conf_matrix": ['trivial', 'dynamic', 'dynamic_plus'],
+        },
+        "rules": [
+            # Rule 1: If metric is not in the three allowed ones, only the first value of all other args is allowed
+            # "True if 'metric' in ['ff_vus_pr', 'range_auc_pr', 'vus_pr'] and (slope_size == 0 and step == 1 and 'slopes' == 'precomputed' and 'existence' == 'None' and 'conf_matrix' == 'trivial') else False",
+            # Rule 2: If metric is in ['range_auc_pr', 'vus_pr'], allow all slope_size but only first for the rest
+            # "True if 'metric' not in ['range_auc_pr', 'vus_pr'] and (step == 1 and 'slopes' == 'precomputed' and 'existence' == 'None' and 'conf_matrix' == 'trivial') else False",
+            # Rule 3: step cannot be greater than slope_size
+            "True if step <= slope_size or (slope_size == 0 and 'metric' == 'ff_vus_pr' and step == 1) else False"
+        ]
+    },
+}
 
 def create_shell_scripts():
     parent_dir = "scripts"
-
-    date_str = datetime.now().strftime("%d_%m_%Y")
-    logs_saving_dir = f"experiments/{date_str}"
-
-    experiment_desc = {
-            "job_name": "compute_metric",
-            "environment": "ffvus",
-            "script_name": "compute_metric.py",
-            "args": {
-                "dataset": ['tsb'], # + os.listdir(os.path.join('data', 'synthetic')),
-                "metric": ['ff_vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr'
-                "slope_size": [0, 10, 100, 1000], #[0] + [int(x) for x in 2**np.arange(11)],
-                "step":  [1, 10, 100, 1000], #[int(x) for x in 2**np.arange(11)],
-                "slopes": ['precomputed'], #, 'function'
-                "existence": ['None', 'trivial', 'optimized'], #, 'matrix'
-                "conf_matrix": ['trivial', 'dynamic', 'dynamic_plus'],
-            },
-            "rules": [
-                # Rule 1: If metric is not in the three allowed ones, only the first value of all other args is allowed
-                # "True if 'metric' in ['ff_vus_pr', 'range_auc_pr', 'vus_pr'] and (slope_size == 0 and step == 1 and 'slopes' == 'precomputed' and 'existence' == 'None' and 'conf_matrix' == 'trivial') else False",
-                # Rule 2: If metric is in ['range_auc_pr', 'vus_pr'], allow all slope_size but only first for the rest
-                # "True if 'metric' not in ['range_auc_pr', 'vus_pr'] and (step == 1 and 'slopes' == 'precomputed' and 'existence' == 'None' and 'conf_matrix' == 'trivial') else False",
-                # Rule 3: step cannot be greater than slope_size
-                "True if step <= slope_size or (slope_size == 0 and 'metric' == 'ff_vus_pr' and step == 1) else False"
-            ]
-    }
-    # experiment_desc = {
-    #     "job_name": "synthetic",
-    #     "environment": "ffvus",
-    #     "script_name": "generate_synthetic_dataset.py",
-    #     "args": {
-    #         "n_timeseries": [10],
-    #         "ts_length": [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000],
-    #         "n_anomalies": [3, 5, 10, 50, 100],
-    #         "avg_anomaly_length": [1, 10, 100, 1_000, 10_000],
-    #     },
-    #     "rules": ["True if n_anomalies * avg_anomaly_length <= 0.2 * ts_length else False"]
-    # }
+    experiment_name = "synthetic_data_generation"
     template = sh_templates['cleps_cpu']
+
+    logs_saving_dir = os.path.join("experiments", experiment_name)
+    experiment_desc = experiments[experiment_name]
     
     # Analyse json
     saving_dir = os.path.join(parent_dir, experiment_desc['job_name'])

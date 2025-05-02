@@ -103,7 +103,6 @@ def compute_metric(
             device=device,
         )
 
-    print(filenames)
     for filename, label, score in tqdm(zip(filenames, labels, scores), desc=f'Computing {metric}', total=len(labels)):
         length, n_anomalies, anomalies_avg_length = analyze_label(label)
         results.append({
@@ -148,7 +147,7 @@ def compute_metric_over_dataset(
         raise ValueError(f"Wrong argument for dataset: {dataset}")
 
     if metric == 'all':
-        metrics = ['ff_vus_pr', 'ff_vus_pr_gpu', 'auc_pr', 'rf', 'affiliation', 'range_auc_pr', 'vus_pr']
+        metrics = ['ff_vus_pr', 'ff_vus_pr_gpu', 'auc_pr', 'affiliation', 'range_auc_pr'] # , 'vus_pr', 'rf'
     else:
         metrics = [metric]
 
@@ -164,7 +163,7 @@ def compute_metric_over_dataset(
         if metric == 'ff_vus_pr':
             filename += f"_{slopes}_{existence}"
         filename += ".csv"
-        saving_path = os.path.join('experiments', '28_04_2025')
+        saving_path = os.path.join('experiments', 'compute_metric')
 
         # Save the results
         print(filename)
@@ -211,10 +210,12 @@ if __name__ == "__main__":
 
     if args.dataset == 'all_synthetic':
         synthetic_dir = os.path.join('data', 'synthetic')
-        datasets = os.listdir(synthetic_dir)
+        datasets = [x for x in os.listdir(synthetic_dir) if '10000000' in x]
     else:
         datasets = [args.dataset]
     datasets.sort(key=natural_keys)
+    print(datasets)
+    exit()
 
     for dataset in datasets:
         compute_metric_over_dataset(

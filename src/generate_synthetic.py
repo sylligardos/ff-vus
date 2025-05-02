@@ -119,7 +119,6 @@ def generate_synthetic(
         ts_name = f"{ts_template_name}_{i}"
         
         # Uncomment if you want to see the generated labels and scores
-        print(testing)
         if testing:
             fig, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
             ax[0].plot(label)
@@ -144,8 +143,8 @@ def generate_synthetic(
 
     # Save this info to file
     if not testing:
-        date_str = "10_04_2025"
-        info_dir = os.path.join("experiments", date_str, "synthetic_info")
+        date_str = "synthetic_data_generation"
+        info_dir = os.path.join("experiments", date_str, "info")
         os.makedirs(info_dir, exist_ok=True)
         info_path = os.path.join(info_dir, f"{ts_template_name}.csv")
 
