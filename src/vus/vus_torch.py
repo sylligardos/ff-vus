@@ -265,7 +265,7 @@ class VUSTorch():
 
         return f_pos
 
-    def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor = None, normalize: bool = True) -> torch.Tensor:
+    def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor = None, normalize: bool = True, allow_recursion: bool = True) -> torch.Tensor:
         """
         PyTorch version of the existence matrix computation. This function uses an approximation fallback mechanism
         in case the memory requirements exceed the limit set by 'max_memory_tokens'.
@@ -291,9 +291,9 @@ class VUSTorch():
         # Check size and fallback if too big
         s, T = labels.shape
         t = score_mask.shape[0]
-        if s * t * T > self.max_memory_tokens:
-            existence_0 = self.compute_existence(labels[0:1], score_mask)
-            existence_s = self.compute_existence(labels[-1:], score_mask)
+        if allow_recursion and (s * t * T > self.max_memory_tokens):
+            existence_0 = self.compute_existence(labels[0:1], score_mask, allow_recursion=False)
+            existence_s = self.compute_existence(labels[-1:], score_mask, allow_recursion=False)
             
             interp_weights = torch.linspace(0, 1, steps=s, device=device).view(1, -1)
             existence = existence_0 + (existence_s - existence_0) * interp_weights.T
