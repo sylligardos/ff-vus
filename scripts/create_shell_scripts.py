@@ -56,11 +56,30 @@ experiments = {
             "True if step <= slope_size or (slope_size == 0 and 'metric' == 'ff_vus_pr' and step == 1) else False"
         ]
     },
+
+    "vus_ffvus_auc_synthetic": {
+        "job_name": "vus_ffvus_auc_synthetic",
+        "environment": "ffvus",
+        "script_name": "src/compute_metric.py",
+        "args": {
+            "dataset": ['all_synthetic'], # + os.listdir(os.path.join('data', 'synthetic')),
+            "metric": ['vus_pr', 'ff_vus_pr', 'auc_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
+            "slope_size": [0, 16, 32, 64, 128, 256],
+            "step":  [1],
+            "slopes": ['precomputed'], #, 'function'
+            "existence": ['optimized'], #, 'matrix'
+            "conf_matrix": ['dynamic_plus'],
+        },
+        "rules": [
+            "True if (slope_size == 0 and 'metric' == 'auc_pr') or 'metric' != 'auc_pr' else False"
+            # "True if 'metric' == 'ff_vus_pr_gpu' else False"
+        ]
+    }
 }
 
 def create_shell_scripts():
     parent_dir = "scripts"
-    experiment_name = "synthetic_data_generation"
+    experiment_name = "vus_ffvus_auc_synthetic"
     template = sh_templates['cleps_cpu']
 
     logs_saving_dir = os.path.join("experiments", experiment_name)

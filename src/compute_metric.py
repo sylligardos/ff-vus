@@ -53,13 +53,16 @@ def load_tsb(testing=False):
 def load_synthetic(dataset, testing=False):
     # Load dataset
     dataset_path = os.path.join('data', 'synthetic', dataset)
-    csv_files = [x for x in os.listdir(dataset_path) if '.csv' in x]
+    csv_files = [x for x in os.listdir(dataset_path) if '.csv' in x or '.npy' in x]
 
     labels = []
     scores = []
 
     for file in tqdm(csv_files, desc="Loading synthetic"):
-        data = np.loadtxt(os.path.join(dataset_path, file), delimiter=",")
+        if '.csv' in file:
+            data = np.loadtxt(os.path.join(dataset_path, file), delimiter=",")
+        else:
+            data = np.load(os.path.join(dataset_path, file))
         label = data[:, 0]
         score = data[:, 1]
         labels.append(label)
@@ -163,7 +166,7 @@ def compute_metric_over_dataset(
         if metric == 'ff_vus_pr':
             filename += f"_{slopes}_{existence}"
         filename += ".csv"
-        saving_path = os.path.join('experiments', 'compute_metric')
+        saving_path = os.path.join('experiments', 'vus_ffvus_auc_synthetic')
 
         # Save the results
         print(filename)
@@ -210,12 +213,10 @@ if __name__ == "__main__":
 
     if args.dataset == 'all_synthetic':
         synthetic_dir = os.path.join('data', 'synthetic')
-        datasets = [x for x in os.listdir(synthetic_dir) if '10000000' in x]
+        datasets = [x for x in os.listdir(synthetic_dir)]
     else:
         datasets = [args.dataset]
     datasets.sort(key=natural_keys)
-    print(datasets)
-    exit()
 
     for dataset in datasets:
         compute_metric_over_dataset(

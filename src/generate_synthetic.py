@@ -35,7 +35,7 @@ def generate_synthetic_labels(length=10000, n_anomalies=10, avg_anomaly_length=1
 
     start_points = anomalies_index - (anomalies_length // 2)
     end_points = start_points + anomalies_length
-    for i, s, e in zip(anomalies_index, start_points, end_points):
+    for i, s, e in tqdm(zip(anomalies_index, start_points, end_points), total=len(start_points), desc="Generating the label"):
         label[s: e] = 1
     
     return label, start_points, end_points
@@ -54,7 +54,7 @@ def generate_score_from_labels(label, start_points, end_points, detection_prob=0
 
     detection = np.random.uniform(size=n_anomalies) < detection_prob
     
-    for i in range(n_anomalies):
+    for i in tqdm(range(n_anomalies), total=n_anomalies, desc="Generating the score"):
         curr_length = end_points[i] - start_points[i]
         anomaly_lengths.append(curr_length)
         if detection[i]:
@@ -81,7 +81,7 @@ def generate_score_from_labels(label, start_points, end_points, detection_prob=0
     false_positive_lengths = np.random.randint(0, np.max(anomaly_lengths), size=n_false_positives)
     false_positive_indexes = np.random.randint(0, length, size=n_false_positives)
     
-    for idx, curr_len in zip(false_positive_indexes, false_positive_lengths):
+    for idx, curr_len in tqdm(zip(false_positive_indexes, false_positive_lengths), total=len(false_positive_indexes), desc="Adding FPs"):
         curr_fp = np.random.normal(loc=0.5, scale=false_positive_strength, size=curr_len)
         
         if (idx + curr_len) - length < 0:
@@ -109,7 +109,7 @@ def generate_synthetic(
     # scores = np.zeros((n_timeseries, ts_length))
     times = np.zeros((n_timeseries))
     
-    for i in tqdm(range(n_timeseries), desc="Generating labels"):
+    for i in tqdm(range(n_timeseries), desc="Generating labels", disable=True):
         tic = time.time()
         label, start_points, end_points = generate_synthetic_labels(length=ts_length, n_anomalies=n_anomalies, avg_anomaly_length=avg_anomaly_length)
         score = generate_score_from_labels(label, start_points, end_points, detection_prob=0.9, lag_ratio=10, noise=0.03, false_positive_strength=0.05)
@@ -128,7 +128,10 @@ def generate_synthetic(
             plt.show()
 
         if not testing:
-            np.savetxt(os.path.join(dir_path, f"{ts_name}.csv"), np.vstack((label, score)).T, fmt=["%d", "%.2f"], delimiter=",")
+            print('Saving')
+            # np.savetxt(os.path.join(dir_path, f"{ts_name}.csv"), np.vstack((label, score)).T, fmt=["%d", "%.2f"], delimiter=",")
+            file_path = os.path.join(dir_path, f"{ts_name}.npy")
+            np.save(file_path, np.vstack((label, score)).T)
 
     total_time = time.time() - total_start
     total_time_min = total_time / 60
