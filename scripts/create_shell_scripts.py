@@ -25,6 +25,7 @@ experiments = {
         "job_name": "synthetic",
         "environment": "ffvus",
         "script_name": "src/generate_synthetic.py",
+        "template": 'cleps_cpu',
         "args": {
             "n_timeseries": [10],
             "ts_length": [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000],
@@ -38,6 +39,7 @@ experiments = {
         "job_name": "compute_metric",
         "environment": "ffvus",
         "script_name": "src/compute_metric.py",
+        "template": 'cleps_cpu',
         "args": {
             "dataset": ['tsb'], # + os.listdir(os.path.join('data', 'synthetic')),
             "metric": ['ff_vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr'
@@ -57,30 +59,45 @@ experiments = {
         ]
     },
 
+    # "vus_ffvus_auc_synthetic": {
+    #     "job_name": "vus_ffvus_auc_synthetic",
+    #     "environment": "ffvus",
+    #     "script_name": "src/compute_metric.py",
+    #     "template": 'cleps_cpu',
+    #     "args": {
+    #         "dataset": ['all_synthetic'], # + os.listdir(os.path.join('data', 'synthetic')),
+    #         "metric": ['vus_pr', 'ff_vus_pr', 'auc_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
+    #         "slope_size": [0, 16, 32, 64, 128, 256],
+    #         "step":  [1],
+    #         "slopes": ['precomputed'], #, 'function'
+    #         "existence": ['optimized'], #, 'matrix'
+    #         "conf_matrix": ['dynamic_plus'],
+    #     },
+    #     "rules": [
+    #         "True if (slope_size == 0 and 'metric' == 'auc_pr') or 'metric' != 'auc_pr' else False"
+    #     ]
+    # },
     "vus_ffvus_auc_synthetic": {
         "job_name": "vus_ffvus_auc_synthetic",
         "environment": "ffvus",
         "script_name": "src/compute_metric.py",
+        "template": 'cleps_gpu',
         "args": {
             "dataset": ['all_synthetic'], # + os.listdir(os.path.join('data', 'synthetic')),
-            "metric": ['vus_pr', 'ff_vus_pr', 'auc_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
+            "metric": ['ff_vus_pr_gpu'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
             "slope_size": [0, 16, 32, 64, 128, 256],
             "step":  [1],
-            "slopes": ['precomputed'], #, 'function'
-            "existence": ['optimized'], #, 'matrix'
+            "slopes": ['function'], #, 'function'
+            "existence": ['matrix'], #, 'matrix'
             "conf_matrix": ['dynamic_plus'],
         },
-        "rules": [
-            "True if (slope_size == 0 and 'metric' == 'auc_pr') or 'metric' != 'auc_pr' else False"
-            # "True if 'metric' == 'ff_vus_pr_gpu' else False"
-        ]
+        "rules": []
     }
 }
 
 def create_shell_scripts():
     parent_dir = "scripts"
     experiment_name = "vus_ffvus_auc_synthetic"
-    template = sh_templates['cleps_cpu']
 
     logs_saving_dir = os.path.join("experiments", experiment_name)
     experiment_desc = experiments[experiment_name]
@@ -95,6 +112,7 @@ def create_shell_scripts():
     rules = experiment_desc['rules']
     cmd = f"{script_name}"
     job_name = experiment_desc["job_name"]
+    template = sh_templates[experiment_desc["template"]]
 
     # Generate all possible combinations of arguments
     combinations = list(itertools.product(*arg_values))

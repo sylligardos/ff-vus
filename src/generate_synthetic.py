@@ -95,6 +95,7 @@ def generate_synthetic(
     ts_length=1000,
     n_anomalies=10,
     avg_anomaly_length=100,
+    file_type='npy',
     testing=False
 ):
     if n_anomalies * avg_anomaly_length > 0.6 * ts_length:
@@ -128,10 +129,16 @@ def generate_synthetic(
             plt.show()
 
         if not testing:
-            print('Saving')
-            # np.savetxt(os.path.join(dir_path, f"{ts_name}.csv"), np.vstack((label, score)).T, fmt=["%d", "%.2f"], delimiter=",")
             file_path = os.path.join(dir_path, f"{ts_name}.npy")
-            np.save(file_path, np.vstack((label, score)).T)
+            if file_type == 'npy':
+                label = label.astype(np.int8)
+                score = np.round(score, 2).astype(np.float16)
+                array = np.vstack((label, score)).T
+                np.save(file_path, array)
+            elif file_type == 'csv':
+                np.savetxt(os.path.join(dir_path, f"{ts_name}.csv"), np.vstack((label, score)).T, fmt=["%d", "%.2f"], delimiter=",")
+            else:
+                raise ValueError(f"Uknown file type: {file_type}")
 
     total_time = time.time() - total_start
     total_time_min = total_time / 60
@@ -171,6 +178,7 @@ if __name__ == "__main__":
     parser.add_argument('-l', '--ts_length', type=int, help='the length of the generated time series')
     parser.add_argument('-n', '--n_anomalies', type=int, help='the number of anomalies per label')
     parser.add_argument('-a', '--avg_anomaly_length', type=int, help='the average length of the induced anomalies')
+    parser.add_argument('-f', '--file_type', type=str, choices=['npy', 'csv'], default='npy', help='Type of file to save the data')
     parser.add_argument('--testing', action='store_true', help='Run in testing mode (plots the data and does not save them)')
 
     args = parser.parse_args()
@@ -180,5 +188,6 @@ if __name__ == "__main__":
         ts_length=args.ts_length,
         n_anomalies=args.n_anomalies,
         avg_anomaly_length=args.avg_anomaly_length,
+        file_type=args.file_type,
         testing=args.testing
     )
