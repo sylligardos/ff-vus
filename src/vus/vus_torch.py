@@ -10,6 +10,8 @@ import torch
 from utils.utils import time_it
 import matplotlib.pyplot as plt
 import seaborn as sns
+import time
+from tqdm import tqdm
 
 class VUSTorch():
     def __init__(
@@ -72,11 +74,10 @@ class VUSTorch():
         
         TODO: Try smaller types when possible, e.g. thresholds. Is it worth it?
         """
-
-        (start_no_edges, end_no_edges), (start_with_edges, end_with_edges) = self.get_anomalies_coordinates_both(label)
+        tic = time.time()
+        ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anomalies_coord = time_it(self.get_anomalies_coordinates_both)(label)
         (thresholds, indices), time_thresholds = time_it(self.get_unique_thresholds)(score)
-        sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
-        pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges)
+        pos, time_pos = time_it(self.distance_from_anomaly)(label, start_with_edges, end_with_edges)
         
         sloped_label_mem_size = self.n_slopes * len(label) * 4
         if sloped_label_mem_size > self.max_memory_tokens:
@@ -84,6 +85,7 @@ class VUSTorch():
             split_points = self.find_safe_splits(label, pos, n_splits)
 
             fp, tp, positives = 0, 0, 0
+            time_sm = 0
             time_slopes = 0
             time_existence = 0
             time_confusion = 0
@@ -91,15 +93,16 @@ class VUSTorch():
             total_anomalies = 0
 
             prev_split = 0
-            for curr_split in split_points:
+            for curr_split in tqdm(split_points, desc='In distance from anomaly', disable=False if n_splits > 10000 else True):
                 label_chunk = label[prev_split:curr_split]
-                score_mask_chunk = sm[:, prev_split:curr_split]
+                score_chunk = score[prev_split:curr_split]
                 pos_chunk = pos[prev_split:curr_split]
                 prev_split = curr_split
 
+                sm, chunk_time_sm = time_it(self.get_score_mask)(score_chunk, thresholds)
                 labels_chunk, chunk_time_slope = time_it(self.add_slopes)(label_chunk, pos_chunk)
-                (anomalies_found_chunk, total_anomalies_chunk), chunk_time_existence = time_it(self.compute_existence)(labels_chunk, score_mask_chunk, pos_chunk, normalize=False)
-                (fp_c, fn_c, tp_c, pos_c, neg_c, fpr_c), chunk_time_conf = time_it(self.compute_confusion_matrix)(labels_chunk, score_mask_chunk)
+                (anomalies_found_chunk, total_anomalies_chunk), chunk_time_existence = time_it(self.compute_existence)(labels_chunk, sm, pos_chunk, normalize=False)
+                (fp_c, fn_c, tp_c, pos_c, neg_c, fpr_c), chunk_time_conf = time_it(self.compute_confusion_matrix)(labels_chunk, sm)
 
                 tp += tp_c
                 fp += fp_c
@@ -107,6 +110,7 @@ class VUSTorch():
                 anomalies_found += anomalies_found_chunk
                 total_anomalies += total_anomalies_chunk
 
+                time_sm += chunk_time_sm
                 time_slopes += chunk_time_slope
                 time_existence += chunk_time_existence
                 time_confusion += chunk_time_conf
@@ -114,16 +118,21 @@ class VUSTorch():
             # Combine all chunks
             existence = anomalies_found / total_anomalies
         else:
+            sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
             labels, time_slopes = time_it(self.add_slopes)(label, pos)
             existence, time_existence = time_it(self.compute_existence)(labels, sm, pos)
             (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
         
         (precision, recall), time_pr_rec = time_it(self.precision_recall_curve)(tp, fp, positives, existence)
         vus_pr, time_integral = time_it(self.auc)(recall, precision)
-        
+        toc = time.time()
+
         time_analysis = {
+            "Total time": toc - tic,
+            "Anomalies coordinates time": time_anomalies_coord,
             "Thresholds time": time_thresholds,
             "Score mask time": time_sm,
+            "Position time": time_pos,
             "Slopes time": time_slopes,
             "Existence time": time_existence,
             "Confusion matrix time": time_confusion,
@@ -219,10 +228,10 @@ class VUSTorch():
 
         pos_mem_size = len(anomaly_boundaries) * length * pos.element_size()
         if pos_mem_size > self.max_memory_tokens:
-            n_chunks = (pos_mem_size // self.max_memory_tokens)
-            chunk_size = int(len(anomaly_boundaries) // n_chunks)
+            n_chunks = max(1, pos_mem_size // self.max_memory_tokens)
+            chunk_size = int(max(1, len(anomaly_boundaries) // n_chunks))
 
-            for chunk in anomaly_boundaries.split(chunk_size):
+            for chunk in tqdm(anomaly_boundaries.split(chunk_size), desc='In distance from anomaly', disable=False if n_chunks > 10000 else True):
                 curr_distances = torch.abs(indices - chunk[None, :])
                 curr_min_distances = curr_distances.min(dim=1).values
                 pos = torch.minimum(pos, curr_min_distances)
@@ -292,37 +301,36 @@ class VUSTorch():
         s, T = labels.shape
         t = score_mask.shape[0]
         if allow_recursion and (s * t * T > self.max_memory_tokens):
-            existence_0 = self.compute_existence(labels[0:1], score_mask, allow_recursion=False)
-            existence_s = self.compute_existence(labels[-1:], score_mask, allow_recursion=False)
+            n_anomalies_found_0, total_anomalies = self.compute_existence(labels[0:1], score_mask, normalize=False, allow_recursion=False)
+            n_anomalies_found_s, total_anomalies = self.compute_existence(labels[-1:], score_mask, normalize=False, allow_recursion=False)
             
             interp_weights = torch.linspace(0, 1, steps=s, device=device).view(1, -1)
-            existence = existence_0 + (existence_s - existence_0) * interp_weights.T
-            return existence
+            n_anomalies_found = n_anomalies_found_0 + (n_anomalies_found_s - n_anomalies_found_0) * interp_weights.T
+        else:
+            # Normalize labels to binary (0 or 1)
+            norm_labels = (labels > 0).int()
 
-        # Normalize labels to binary (0 or 1)
-        norm_labels = (labels > 0).int()
+            # Compute step function (stairs)
+            diff = torch.diff(norm_labels, dim=1, prepend=torch.zeros((norm_labels.size(0), 1), device=device))
+            diff = torch.clamp(diff, min=0, max=1)
+            stairs = torch.cumsum(diff, dim=1)
+            labels_stairs = norm_labels * stairs
 
-        # Compute step function (stairs)
-        diff = torch.diff(norm_labels, dim=1, prepend=torch.zeros((norm_labels.size(0), 1), device=device))
-        diff = torch.clamp(diff, min=0, max=1)
-        stairs = torch.cumsum(diff, dim=1)
-        labels_stairs = norm_labels * stairs
+            # Multiply each score with every labeled anomaly step
+            score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]
 
-        # Multiply each score with every labeled anomaly step
-        score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]
+            # Cumulative max along the time axis
+            cm = torch.cummax(score_hat, dim=2).values  # shape: [B, S, T']
 
-        # Cumulative max along the time axis
-        cm = torch.cummax(score_hat, dim=2).values  # shape: [B, S, T']
+            # Compute differences along time and normalize
+            cm_diff = torch.diff(cm, dim=2)
+            cm_diff_norm = torch.clamp(cm_diff - 1, min=0)
 
-        # Compute differences along time and normalize
-        cm_diff = torch.diff(cm, dim=2)
-        cm_diff_norm = torch.clamp(cm_diff - 1, min=0)
-
-        # Total anomalies and missed anomalies
-        total_anomalies = stairs[:, -1][:, None]
-        final_anomalies_missed = total_anomalies - cm[:, :, -1]
-        n_anomalies_not_found = torch.sum(cm_diff_norm, dim=2) + final_anomalies_missed
-        n_anomalies_found = total_anomalies - n_anomalies_not_found
+            # Total anomalies and missed anomalies
+            total_anomalies = stairs[:, -1][:, None]
+            final_anomalies_missed = total_anomalies - cm[:, :, -1]
+            n_anomalies_not_found = torch.sum(cm_diff_norm, dim=2) + final_anomalies_missed
+            n_anomalies_found = total_anomalies - n_anomalies_not_found
 
         if normalize:
             return n_anomalies_found / total_anomalies

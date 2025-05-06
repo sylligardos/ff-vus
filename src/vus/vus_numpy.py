@@ -12,6 +12,7 @@ import math
 from skimage.util.shape import view_as_windows as viewW
 import matplotlib.pyplot as plt
 import seaborn as sns
+import time
 
 
 class VUSNumpy():
@@ -92,6 +93,7 @@ class VUSNumpy():
         # TODO: Compute anomaly indexes and position here once, and then feed it to the functions bellow
         # TODO: Maybe the last 3 steps can be combined into one function that efficiently handles it
 
+        tic = time.time()
         thresholds, time_thresholds = time_it(self.get_unique_thresholds)(score)
         sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
 
@@ -100,8 +102,10 @@ class VUSNumpy():
         (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
         (precision, recall), time_pr_rec = time_it(self.precision_recall_curve)(tp, fp, positives, existence)
         vus_pr, time_integral = time_it(self.auc)(recall, precision)
-        
+        toc = time.time()
+
         time_analysis = {
+            "Total time": toc - tic,
             "Thresholds time": time_thresholds,
             "Score mask time": time_sm,
             "Slopes time": time_slopes,

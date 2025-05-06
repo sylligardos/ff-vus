@@ -70,7 +70,7 @@ def load_synthetic(dataset, testing=False):
         if testing: break
 
     labels = np.array(labels)
-    scores = np.array(scores)
+    scores = np.array(scores).round(2)
 
     return csv_files, labels, scores
 
@@ -119,15 +119,39 @@ def compute_metric(
             if metric == 'ff_vus_pr_gpu':
                 label, score = torch.tensor(label, device=device), torch.tensor(score, device=device)
             metric_value, ff_vus_time_analysis = ff_vus.compute(label, score)
-            metric_time = sum([ff_vus_time_analysis[key] for key in ff_vus_time_analysis.keys()])
-            results[-1].update(ff_vus_time_analysis)
+            metric_time = ff_vus_time_analysis["Total time"]
         else:
             metric_value, metric_time = time_it(sylli_get_metrics)(label, score, metric, slope_size)
 
         results[-1].update({
-            metric_name: float(metric_value),
-            f"{metric_name} time": metric_time,
+            'Metric': metric_name,
+            'Metric value': float(metric_value),
+            'Metric time': metric_time,
         })
+
+        if metric == 'range_auc_pr' or metric == 'vus_pr':
+            results[-1].update({
+                'Slope size': slope_size
+            })
+        elif metric == 'ff_vus_pr':
+            results[-1].update({
+                'Slope size': slope_size,
+                'Step': step,  
+                'Slopes': slopes,
+                'Existence': existence,
+                'Confusion matrix': conf_matrix,
+            })
+            results[-1].update(ff_vus_time_analysis)
+        elif metric == 'ff_vus_pr_gpu':
+            results[-1].update({
+                'Slope size': slope_size,
+                'Step': step,
+                'Slopes': 'function',
+                'Existence': 'matrix',
+                'Confusion matrix': conf_matrix,
+            })
+            results[-1].update(ff_vus_time_analysis)
+
         
     return pd.DataFrame(results)
 
@@ -171,7 +195,7 @@ def compute_metric_over_dataset(
         # Save the results
         print(filename)
         print(df)
-        print(f"Average computation time: {df.iloc[:, -1].mean():.3f} seconds")
+        print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
         
         if not testing:
             df.to_csv(os.path.join(saving_path, 'results', filename))
@@ -213,7 +237,7 @@ if __name__ == "__main__":
 
     if args.dataset == 'all_synthetic':
         synthetic_dir = os.path.join('data', 'synthetic')
-        datasets = [x for x in os.listdir(synthetic_dir)]
+        datasets = [x for x in os.listdir(synthetic_dir) if not '1000000000' in x and not '10000000000' in x]
     else:
         datasets = [args.dataset]
     datasets.sort(key=natural_keys)
