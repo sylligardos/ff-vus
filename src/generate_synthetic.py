@@ -105,9 +105,6 @@ def generate_synthetic(
     dir_path = os.path.join("data", "synthetic", f"synthetic_length_{ts_length}_n_anomalies_{n_anomalies}_avg_anomaly_length_{avg_anomaly_length}")
     os.makedirs(dir_path, exist_ok=True)
     ts_template_name = f"syn_{ts_length}_{n_anomalies}_{avg_anomaly_length}"
-    
-    # labels = np.zeros((n_timeseries, ts_length))
-    # scores = np.zeros((n_timeseries, ts_length))
     times = np.zeros((n_timeseries))
     
     for i in tqdm(range(n_timeseries), desc="Generating labels", disable=True):

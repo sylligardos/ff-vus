@@ -73,10 +73,12 @@ class VUSTorch():
         The main computing function of the metric
         
         TODO: Try smaller types when possible, e.g. thresholds. Is it worth it?
+        TODO: I think I can do pos in the for loop, so try to remove pos from find_safe_splits
+        TODO: Then remove the break into chunks functionality from distance from anomaly
         """
         tic = time.time()
-        ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anomalies_coord = time_it(self.get_anomalies_coordinates_both)(label)
-        (thresholds, indices), time_thresholds = time_it(self.get_unique_thresholds)(score)
+        ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = time_it(self.get_anomalies_coordinates_both)(label)
+        (thresholds, _), time_thresholds = time_it(self.get_unique_thresholds)(score)
         pos, time_pos = time_it(self.distance_from_anomaly)(label, start_with_edges, end_with_edges)
         
         sloped_label_mem_size = self.n_slopes * len(label) * 4
@@ -179,27 +181,21 @@ class VUSTorch():
         Return the starting and ending points of all anomalies in label,
         both with and without edge inclusion.
 
+        Args:
+            label (torch.tensor): vector of 1s and 0s
         Returns:
             ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges))
         """
         device = label.device
         diff = torch.diff(label)
-        start_points = torch.where(diff == 1)[0] + 1
-        end_points = torch.where(diff == -1)[0]
-
-        start_no_edges = start_points.clone()
-        end_no_edges = end_points.clone()
-
-        start_with_edges = start_points
-        end_with_edges = end_points
-
-        if label[-1] == 1:
-            end_with_edges = torch.cat((end_points, torch.tensor([len(label) - 1], device=device)))
-        if label[0] == 1:
-            start_with_edges = torch.cat((torch.tensor([0], device=device), start_points))
-
+        start_no_edges = torch.where(diff == 1)[0] + 1
+        end_no_edges = torch.where(diff == -1)[0]
+        
         if start_with_edges.shape != end_with_edges.shape:
             raise ValueError(f"The number of start and end points of anomalies does not match: {start_with_edges} != {end_with_edges}")
+
+        start_with_edges = torch.cat((torch.tensor([0], device=device), start_no_edges)) if label[0] else start_points
+        end_with_edges = torch.cat((end_no_edges, torch.tensor([len(label) - 1], device=device))) if label[-1] else end_points
 
         return (start_no_edges, end_no_edges), (start_with_edges, end_with_edges)
     
@@ -218,13 +214,12 @@ class VUSTorch():
         device = label.device
         length = label.size(0)
 
+        pos = torch.full((length,), float('inf'), device=device)
         if start_points.numel() == 0 and end_points.numel() == 0:
-            return torch.full((length,), float('inf'), device=device)
+            return pos
 
         anomaly_boundaries = torch.cat([start_points, end_points])
         indices = torch.arange(length, device=device)[:, None]
-
-        pos = torch.full((length,), float('inf'), device=device)
 
         pos_mem_size = len(anomaly_boundaries) * length * pos.element_size()
         if pos_mem_size > self.max_memory_tokens:

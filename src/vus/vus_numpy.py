@@ -25,12 +25,19 @@ class VUSNumpy():
             existence='optimized',
             conf_matrix='dynamic', 
             interpolation='stepwise',
+            metric='vus_pr'
         ):
         """
         Initialize the VUS metric.
 
         Args:
-            TODO: Write the arguments description when done
+            slope_size (int): Size of the slope range used for encoding labeled anomalies.
+            step (int): Step between slope values; must divide slope_size evenly.
+            zita (float): Tolerance parameter, between 0 and 1.
+            slopes (str): Strategy for computing slope information: 'precomputed' or 'function'.
+            existence (str): Strategy for computing existence: 'None', 'trivial', 'optimized', 'matrix'.
+            conf_matrix (str): Strategy for computing the confusion matrix: 'trivial', 'dynamic', 'dynamic_plus'.
+            interpolation (str): Interpolation strategy for PR curve: 'linear' or 'stepwise'.
         """
         if slope_size < 0 or step < 0:
             raise ValueError(f"Error with the slope_size {slope_size} or step {step}. They should be positive values.")
@@ -48,53 +55,51 @@ class VUSNumpy():
         self.slope_values = np.arange(self.slope_size + 1, step=self.step) if step > 0 else np.array([0])
         self.n_slopes = self.slope_values.shape[0]
 
+        # Define valid argument sets
         slopes_args = ['precomputed', 'function']
-        if slopes in slopes_args:
-            self.add_slopes_mode = slopes
-            if slopes == 'precomputed':
-                if slope_size > 0:
-                    self.pos_slopes = self._precompute_slopes()
-                    self.neg_slopes = self.pos_slopes[:, ::-1]
-                else:
-                    self.pos_slopes = np.array([])
-                    self.neg_slopes = np.array([])
-        else:
-            raise ValueError(f"Unknown argument for slopes: {slopes}. 'slopes' should be one of {existence_args}")
-        
         existence_args = ['None', 'trivial', 'optimized', 'matrix']
-        if existence in existence_args:
-            self.existence_mode = existence
-        else:
-            raise ValueError(f"Unknown argument for existence: {existence}. 'existence' should be one of {existence_args}")
-        
         conf_matrix_args = ['trivial', 'dynamic', 'dynamic_plus']
-        if conf_matrix in conf_matrix_args:
-            self.conf_matrix_mode = conf_matrix
-        else:
-            raise ValueError(f"Unknown argument for conf_matrix: {conf_matrix}. 'conf_matrix' should be one of {conf_matrix_args}")
-        
         interpolation_args = ['linear', 'stepwise']
-        if interpolation in interpolation_args:
-            self.interpolation_mode = interpolation
-        else:
-            raise ValueError(f"Unknown argument for interpolation: {interpolation}. 'interpolation' should be one of {interpolation_args}")
-        
-        # This is not yet implemented. It may be some time in the feature
-        # metric_args = ['vus_pr', 'vus_roc', 'all']
-        # if metric in metric_args:   
-        #     self.metric = metric
-        # else:
-        #     raise ValueError(f"Unknown argument for metric: {metric}. 'metric' should be one of {metric_args}")
+        metric_args = ['auc_pr', 'auc_roc', 'vus_pr', 'vus_roc', 'all']
+
+        # Validate and set modes
+        self.add_slopes_mode = self._validate_arg(slopes, slopes_args, 'slopes')
+        self.existence_mode = self._validate_arg(existence, existence_args, 'existence')
+        self.conf_matrix_mode = self._validate_arg(conf_matrix, conf_matrix_args, 'conf_matrix')
+        self.interpolation_mode = self._validate_arg(interpolation, interpolation_args, 'interpolation')
+        self.metric_mode = self._validate_arg(metric, metric_args, 'metric')
+
+        if slopes == 'precomputed':
+            if slope_size > 0:
+                self.pos_slopes = self._precompute_slopes()
+                self.neg_slopes = self.pos_slopes[:, ::-1]
+            else:
+                self.pos_slopes = np.array([])
+                self.neg_slopes = np.array([])
+
+    def _validate_arg(self, value, valid_options, name):
+        if value not in valid_options:
+            raise ValueError(f"Unknown argument for `{name}`: {value}. Must be one of {valid_options}.")
+        return value
 
     def compute(self, label, score):
         """
         The main computing function of the metric
         """
         # TODO: Compute anomaly indexes and position here once, and then feed it to the functions bellow
-        # TODO: Maybe the last 3 steps can be combined into one function that efficiently handles it
+        # TODO: Compute FP and then apply safe mask, maybe?
 
         tic = time.time()
+        ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anom_coord = time_it(self.get_anomalies_coordinates)(label)
         thresholds, time_thresholds = time_it(self.get_unique_thresholds)(score)
+        pos, time_pos = time_it(self.distance_from_anomaly)(label, start_with_edges, end_with_edges, clip=True)
+        
+        fig, ax = plt.subplots(2, 1, sharex=True)
+        ax[0].plot(label)
+        ax[1].plot(pos)
+        plt.show()
+        exit()
+
         sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
 
         labels, time_slopes = time_it(self.add_slopes)(label)
@@ -106,6 +111,7 @@ class VUSNumpy():
 
         time_analysis = {
             "Total time": toc - tic,
+            "Anomaly Coordinates time": time_anom_coord,
             "Thresholds time": time_thresholds,
             "Score mask time": time_sm,
             "Slopes time": time_slopes,
@@ -168,47 +174,52 @@ class VUSNumpy():
 
         return shifted_slopes
     
-    def distance_from_anomaly(self, label, clip=False):
+    def distance_from_anomaly(self, label, start_points, end_points, clip=False):
         '''
         For every point in the label, returns a time series that shows the distance
         of that point to its closest anomaly. Compute the distance of each point 
         to every anomaly and keep the minimum.
         '''
         length = len(label)
-        start_points, end_points = self.get_anomalies_coordinates(label)
+
+        pos = np.full(length, np.inf)
+        if start_points.shape[0] == 0 and end_points.shape[0] == 0:
+            return pos
+        
+        anomaly_boundaries = np.concat([start_points, end_points])
         indices = np.arange(length)[:, None]
 
-        anomaly_boundaries = np.concat([start_points, end_points])
-        if len(anomaly_boundaries) == 0:
-            return np.ones(length) * np.inf
-        
         distances = np.abs(indices - anomaly_boundaries)
         pos = np.min(distances, axis=1)
+        
         if clip:
             pos[label.astype(bool)] = 0
-            pos = np.clip(pos, 0, self.slope_size)
+            np.clip(pos, a_min=0, a_max=self.slope_size, out=pos)
         
         return pos
     
-    def get_anomalies_coordinates(self, label, include_edges=True):
-        '''
-        Return the starting and ending points of all anomalies in label
-        If edges is True, then return the first and last point,
-        only if anomalies exist in the very beggining or very end.
-        '''
-        diff = np.diff(label)
-        start_points = np.where(diff == 1)[0] + 1
-        end_points = np.where(diff == -1)[0]
+    def get_anomalies_coordinates(self, label: np.array):
+        """
+        Return the starting and ending points of all anomalies in label,
+        both with and without edge inclusion.
 
-        if include_edges:
-            if label[-1]:
-                end_points = np.append(end_points, len(label) - 1)
-            if label[0]:
-                start_points = np.append([0], start_points)
-            if start_points.shape != end_points.shape:
-                raise ValueError(f'The number of start and end points of anomalies does not match, {start_points} != {end_points}')
+        Args:
+            label (np.array): vector of 1s and 0s
+
+        Returns:
+            ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges))
+        """
+        diff = np.diff(label)
+        start_no_edges = np.where(diff == 1)[0] + 1
+        end_no_edges = np.where(diff == -1)[0]
+
+        if start_no_edges.shape != end_no_edges.shape:
+            raise ValueError(f'The number of start and end points of anomalies does not match, {start_points} != {end_points}')
+        
+        start_with_edges = np.append([0], start_no_edges) if label[0] else start_no_edges
+        end_with_edges = np.append(end_no_edges, len(label) - 1) if label[-1] else end_no_edges
             
-        return start_points, end_points
+        return (start_no_edges, end_no_edges), (start_with_edges, end_with_edges)
 
     def _slope_function(self, label, pos):
         """
