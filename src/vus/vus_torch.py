@@ -77,14 +77,15 @@ class VUSTorch():
         TODO: Then remove the break into chunks functionality from distance from anomaly
         """
         tic = time.time()
+
+        # Initialization
         ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = time_it(self.get_anomalies_coordinates_both)(label)
-        (thresholds, _), time_thresholds = time_it(self.get_unique_thresholds)(score)
-        pos, time_pos = time_it(self.distance_from_anomaly)(label, start_with_edges, end_with_edges)
-        
+        safe_mask = self._create_safe_mask(label, start_with_edges, end_with_edges)
+
         sloped_label_mem_size = self.n_slopes * len(label) * 4
         if sloped_label_mem_size > self.max_memory_tokens:
             n_splits = int(sloped_label_mem_size // self.max_memory_tokens)
-            split_points = self.find_safe_splits(label, pos, n_splits)
+            split_points = self.find_safe_splits(label, safe_mask, n_splits)
 
             fp, tp, positives = 0, 0, 0
             time_sm = 0
@@ -101,7 +102,12 @@ class VUSTorch():
                 pos_chunk = pos[prev_split:curr_split]
                 prev_split = curr_split
 
+                # Preprocessing
+                pos, time_pos = time_it(self.distance_from_anomaly)(label_chunk, start_with_edges, end_with_edges)
+                (thresholds, _), time_thresholds = time_it(self.get_unique_thresholds)(score_chunk)
                 sm, chunk_time_sm = time_it(self.get_score_mask)(score_chunk, thresholds)
+                pos, time_pos = time_it(self.distance_from_anomaly)(label, start_with_edges, end_with_edges)
+                
                 labels_chunk, chunk_time_slope = time_it(self.add_slopes)(label_chunk, pos_chunk)
                 (anomalies_found_chunk, total_anomalies_chunk), chunk_time_existence = time_it(self.compute_existence)(labels_chunk, sm, pos_chunk, normalize=False)
                 (fp_c, fn_c, tp_c, pos_c, neg_c, fpr_c), chunk_time_conf = time_it(self.compute_confusion_matrix)(labels_chunk, sm)
@@ -120,8 +126,11 @@ class VUSTorch():
             # Combine all chunks
             existence = anomalies_found / total_anomalies
         else:
+            pos, time_pos = time_it(self.distance_from_anomaly)(label, start_with_edges, end_with_edges)
+            (thresholds, _), time_thresholds = time_it(self.get_unique_thresholds)(score)
             sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
-            labels, time_slopes = time_it(self.add_slopes)(label, pos)
+        
+            labels, time_slopes = time_it(self.add_slopes)(label, pos)    
             existence, time_existence = time_it(self.compute_existence)(labels, sm, pos)
             (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
         
@@ -144,13 +153,13 @@ class VUSTorch():
 
         return vus_pr, time_analysis
 
-    def find_safe_splits(self, label, pos, n_splits):
+    def find_safe_splits(self, label, safe_mask, n_splits):
         """
         Finds approximately evenly spaced safe split points where pos is a local maximum
         and far enough from anomalies.
         """
-        length = torch.tensor(pos.shape[0], device=self.device)
-        valid_splits_mask = ~self._create_safe_mask(label, pos)
+        length = torch.tensor(label.shape[0], device=self.device)
+        valid_splits_mask = ~safe_mask
         valid_splits = torch.nonzero(valid_splits_mask).squeeze(1)
 
         if valid_splits.numel() == 0 or n_splits <= 1:
@@ -166,7 +175,7 @@ class VUSTorch():
 
         # Final safety check
         assert torch.all(label[selected_splits] != 1), "Some selected splits fall inside anomalies!"
-        assert torch.all(pos[selected_splits] > self.slope_size + 1), "Some splits are too close to anomalies!"
+        assert torch.all(safe_mask[selected_splits] == 0), "Some splits are too close to anomalies!"
 
         return torch.cat((selected_splits, length[None]), dim=0)
     
@@ -191,21 +200,33 @@ class VUSTorch():
         start_no_edges = torch.where(diff == 1)[0] + 1
         end_no_edges = torch.where(diff == -1)[0]
         
-        if start_with_edges.shape != end_with_edges.shape:
+        if start_no_edges.shape != end_no_edges.shape:
             raise ValueError(f"The number of start and end points of anomalies does not match: {start_with_edges} != {end_with_edges}")
 
-        start_with_edges = torch.cat((torch.tensor([0], device=device), start_no_edges)) if label[0] else start_points
-        end_with_edges = torch.cat((end_no_edges, torch.tensor([len(label) - 1], device=device))) if label[-1] else end_points
+        start_with_edges = torch.cat((torch.tensor([0], device=device), start_no_edges)) if label[0] else start_no_edges
+        end_with_edges = torch.cat((end_no_edges, torch.tensor([len(label) - 1], device=device))) if label[-1] else end_no_edges
 
         return (start_no_edges, end_no_edges), (start_with_edges, end_with_edges)
     
-    def _create_safe_mask(self, label: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+    def _create_safe_mask(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor) -> torch.Tensor:
         """
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
         than the bigger slope. This allows us to mask the label safely, without changing anything in the implementation.
         """
-        mask = pos <= (self.slope_size + 1)
-        return torch.logical_or(mask, label)
+        length = torch.tensor(label.shape[0])
+        mask = torch.zeros(length, dtype=torch.int8, device=self.device)
+        
+        start_safe_points = torch.maximum(start_points - (self.slope_size + 1), mask[0])
+        end_safe_points = torch.minimum(end_points + (self.slope_size + 1) + 1, length - 1)
+
+        mask[start_safe_points] += 1
+        mask[end_safe_points] -= 1
+
+        mask = mask.cumsum(dim=0)
+        mask = mask > 0
+        mask[-1] = label[-1]
+        
+        return mask
     
     def distance_from_anomaly(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor, clip: bool = False) -> torch.Tensor:
         """
@@ -269,7 +290,7 @@ class VUSTorch():
 
         return f_pos
 
-    def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, pos: torch.Tensor = None, normalize: bool = True, allow_recursion: bool = True) -> torch.Tensor:
+    def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, safe_mask: torch.Tensor = None, normalize: bool = True, allow_recursion: bool = True) -> torch.Tensor:
         """
         PyTorch version of the existence matrix computation. This function uses an approximation fallback mechanism
         in case the memory requirements exceed the limit set by 'max_memory_tokens'.
@@ -284,10 +305,9 @@ class VUSTorch():
         device = labels.device
 
         # Compute mask for relevant points
-        if pos is not None:
-            mask = self._create_safe_mask(labels[0], pos)
-            labels = labels[:, mask]
-            score_mask = score_mask[:, mask]
+        if safe_mask is not None:
+            labels = labels[:, safe_mask]
+            score_mask = score_mask[:, safe_mask]
         
         if labels.shape[1] < 1:
             return 0 if normalize else (0, 0)
