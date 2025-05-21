@@ -80,13 +80,14 @@ class VUSTorch():
 
         # Initialization
         ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = time_it(self.get_anomalies_coordinates_both)(label)
-        safe_mask = self._create_safe_mask(label, start_with_edges, end_with_edges)
 
         sloped_label_mem_size = self.n_slopes * len(label) * 4
         if sloped_label_mem_size > self.max_memory_tokens:
             n_splits = int(sloped_label_mem_size // self.max_memory_tokens)
+            safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
             split_points = self.find_safe_splits(label, safe_mask, n_splits)
 
+            # Total values holders
             fp, tp, positives = 0, 0, 0
             time_sm = 0
             time_slopes = 0
@@ -97,26 +98,25 @@ class VUSTorch():
 
             prev_split = 0
             for curr_split in tqdm(split_points, desc='In distance from anomaly', disable=False if n_splits > 10000 else True):
-                label_chunk = label[prev_split:curr_split]
-                score_chunk = score[prev_split:curr_split]
-                pos_chunk = pos[prev_split:curr_split]
+                label_c = label[prev_split:curr_split]
+                score_c = score[prev_split:curr_split]
+                pos_c = pos[prev_split:curr_split]
                 prev_split = curr_split
 
                 # Preprocessing
-                pos, time_pos = time_it(self.distance_from_anomaly)(label_chunk, start_with_edges, end_with_edges)
-                (thresholds, _), time_thresholds = time_it(self.get_unique_thresholds)(score_chunk)
-                sm, chunk_time_sm = time_it(self.get_score_mask)(score_chunk, thresholds)
-                pos, time_pos = time_it(self.distance_from_anomaly)(label, start_with_edges, end_with_edges)
-                
-                labels_chunk, chunk_time_slope = time_it(self.add_slopes)(label_chunk, pos_chunk)
-                (anomalies_found_chunk, total_anomalies_chunk), chunk_time_existence = time_it(self.compute_existence)(labels_chunk, sm, pos_chunk, normalize=False)
-                (fp_c, fn_c, tp_c, pos_c, neg_c, fpr_c), chunk_time_conf = time_it(self.compute_confusion_matrix)(labels_chunk, sm)
+                pos, time_pos = time_it(self.distance_from_anomaly)(label_c, start_with_edges, end_with_edges)
+                (thresholds, _), time_thresholds = time_it(self.get_unique_thresholds)(score_c)
+                sm, chunk_time_sm = time_it(self.get_score_mask)(score_c, thresholds)
+
+                labels_c, chunk_time_slope = time_it(self.add_slopes)(label_c, pos_c)
+                (anomalies_found_c, total_anomalies_c), chunk_time_existence = time_it(self.compute_existence)(labels_c, sm, pos_c, normalize=False)
+                (fp_c, fn_c, tp_c, pos_c, neg_c, fpr_c), chunk_time_conf = time_it(self.compute_confusion_matrix)(labels_c, sm)
 
                 tp += tp_c
                 fp += fp_c
                 positives += pos_c
-                anomalies_found += anomalies_found_chunk
-                total_anomalies += total_anomalies_chunk
+                anomalies_found += anomalies_found_c
+                total_anomalies += total_anomalies_c
 
                 time_sm += chunk_time_sm
                 time_slopes += chunk_time_slope
@@ -208,7 +208,7 @@ class VUSTorch():
 
         return (start_no_edges, end_no_edges), (start_with_edges, end_with_edges)
     
-    def _create_safe_mask(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor) -> torch.Tensor:
+    def create_safe_mask(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor) -> torch.Tensor:
         """
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
         than the bigger slope. This allows us to mask the label safely, without changing anything in the implementation.
@@ -242,18 +242,18 @@ class VUSTorch():
         anomaly_boundaries = torch.cat([start_points, end_points])
         indices = torch.arange(length, device=device)[:, None]
 
-        pos_mem_size = len(anomaly_boundaries) * length * pos.element_size()
-        if pos_mem_size > self.max_memory_tokens:
-            n_chunks = max(1, pos_mem_size // self.max_memory_tokens)
-            chunk_size = int(max(1, len(anomaly_boundaries) // n_chunks))
+        # pos_mem_size = len(anomaly_boundaries) * length * pos.element_size()
+        # if pos_mem_size > self.max_memory_tokens:
+        #     n_chunks = max(1, pos_mem_size // self.max_memory_tokens)
+        #     chunk_size = int(max(1, len(anomaly_boundaries) // n_chunks))
 
-            for chunk in tqdm(anomaly_boundaries.split(chunk_size), desc='In distance from anomaly', disable=False if n_chunks > 10000 else True):
-                curr_distances = torch.abs(indices - chunk[None, :])
-                curr_min_distances = curr_distances.min(dim=1).values
-                pos = torch.minimum(pos, curr_min_distances)
-        else:
-            distances = torch.abs(indices - anomaly_boundaries)
-            pos = torch.min(distances, dim=1).values
+        #     for chunk in tqdm(anomaly_boundaries.split(chunk_size), desc='In distance from anomaly', disable=False if n_chunks > 10000 else True):
+        #         curr_distances = torch.abs(indices - chunk[None, :])
+        #         curr_min_distances = curr_distances.min(dim=1).values
+        #         pos = torch.minimum(pos, curr_min_distances)
+        # else:
+        distances = torch.abs(indices - anomaly_boundaries)
+        pos = torch.min(distances, dim=1).values
         
         if clip:
             pos = pos.clone()

@@ -91,19 +91,14 @@ class VUSNumpy():
 
         tic = time.time()
         ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anom_coord = time_it(self.get_anomalies_coordinates)(label)
+        safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+        
         thresholds, time_thresholds = time_it(self.get_unique_thresholds)(score)
         pos, time_pos = time_it(self.distance_from_anomaly)(label, start_with_edges, end_with_edges, clip=True)
-        
-        fig, ax = plt.subplots(2, 1, sharex=True)
-        ax[0].plot(label)
-        ax[1].plot(pos)
-        plt.show()
-        exit()
-
         sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
 
-        labels, time_slopes = time_it(self.add_slopes)(label)
-        existence, time_existence = time_it(self.compute_existence)(labels, sm, score, thresholds)
+        labels, time_slopes = time_it(self.add_slopes)(label, start_no_edges, end_no_edges, pos)
+        existence, time_existence = time_it(self.compute_existence)(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
         (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
         (precision, recall), time_pr_rec = time_it(self.precision_recall_curve)(tp, fp, positives, existence)
         vus_pr, time_integral = time_it(self.auc)(recall, precision)
@@ -114,6 +109,7 @@ class VUSNumpy():
             "Anomaly Coordinates time": time_anom_coord,
             "Thresholds time": time_thresholds,
             "Score mask time": time_sm,
+            "Position time": time_pos,
             "Slopes time": time_slopes,
             "Existence time": time_existence,
             "Confusion matrix time": time_confusion,
@@ -129,15 +125,26 @@ class VUSNumpy():
     def get_unique_thresholds(self, score):
         return np.sort(np.unique(score))[::-1]
     
-    def _create_safe_mask(self, label):
+    def create_safe_mask(self, label, start_points, end_points):
         """
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
         than the bigger slope. This allows us to mask the label safely, without changing anything in the implementation.
         """
 
-        pos = self.distance_from_anomaly(label)
-        mask = pos <= (self.slope_size + 1)
-        return np.logical_or(mask, label)
+        length = label.shape[0]
+        mask = np.zeros(length, dtype=np.int8)
+        
+        start_safe_points = np.maximum(start_points - (self.slope_size + 1), mask[0])
+        end_safe_points = np.minimum(end_points + (self.slope_size + 1) + 1, length - 1)
+
+        mask[start_safe_points] += 1
+        mask[end_safe_points] -= 1
+
+        mask = np.cumsum(mask)
+        mask = mask > 0
+        mask[-1] = label[-1]
+        
+        return mask
     
     def _strided_indexing_roll(self, a, r):
         # Concatenate with sliced to cover all rolls
@@ -221,9 +228,13 @@ class VUSNumpy():
             
         return (start_no_edges, end_no_edges), (start_with_edges, end_with_edges)
 
-    def _slope_function(self, label, pos):
+    def add_slopes_function(self, label, pos):
         """
-        Computes slope transformations for multiple l values efficiently.
+        Compute the slopes of a label using a predefined function.
+
+        This function is about 5 - 10 times slower than the precomputed version on CPUs.
+        The pos part requires about 10% of the total execution time.
+        
         
         Another potential improvement for the motivated
         f_pos[1:, valid_mask][(slope_values - pos[:, valid_mask]) < 0] = 0
@@ -247,23 +258,11 @@ class VUSNumpy():
         f_pos[1:, label.astype(bool)] = 1
 
         return f_pos
-    
-    def add_slopes_function(self, label):
+
+    def add_slopes_precomputed(self, label, start_points, end_points):
         """
-        Compute the slopes of a label using a predefined function.
-
-        This function is about 5 - 10 times slower than the precomputed version on CPUs.
-        The pos part requires about 10% of the total execution time.
+        Start points and end points of anomalies are without edges
         """
-
-        pos = self.distance_from_anomaly(label)
-        slopes = self._slope_function(label, pos)
-        
-        return slopes
-
-    def add_slopes_precomputed(self, label):
-        start_points, end_points = self.get_anomalies_coordinates(label, include_edges=False)
-
         result = np.repeat([label], self.n_slopes, axis=0)
         if self.n_slopes == 1: 
             return result
@@ -281,32 +280,30 @@ class VUSNumpy():
 
         return result
     
-    def add_slopes(self, label):
+    def add_slopes(self, label, start_points, end_points, pos):
         if self.add_slopes_mode == 'precomputed':
-            return self.add_slopes_precomputed(label)
+            return self.add_slopes_precomputed(label, start_points, end_points)
         else:
-            return self.add_slopes_function(label)
+            return self.add_slopes_function(label, pos)
     
-    def compute_existence(self, labels, sm, score, thresholds):
+    def compute_existence(self, labels, sm, score, thresholds, start_points, end_points, safe_mask):
         if self.existence_mode == 'optimized':
-            return self.existence_optimized(labels, score, thresholds)
+            return self.existence_optimized(labels, score, thresholds, start_points, end_points)
         if self.existence_mode == 'matrix':
-            return self.existence_matrix(labels, sm)
+            return self.existence_matrix(labels, sm, safe_mask)
         if self.existence_mode == 'None':
             # return self.no_existence(thresholds)
             return None
         if self.existence_mode == 'trivial':
-            return self.existence_trivial(labels, sm, thresholds)
+            return self.existence_trivial(labels, sm, thresholds, start_points, end_points)
     
     def no_existence(self, thresholds):
         return np.ones((self.n_slopes, len(thresholds)))
 
-    def existence_trivial(self, labels, score_mask, thresholds):
+    def existence_trivial(self, labels, score_mask, thresholds, start_points, end_points):
         n_slopes, T = labels.shape
         n_thresholds = thresholds.shape[0]
         existence = np.zeros((n_slopes, n_thresholds))
-        
-        start_points, end_points = self.get_anomalies_coordinates(labels[0])
         n_anomalies = np.full(n_slopes, start_points.shape[0], dtype=int)
 
         all_start_points = np.maximum((np.tile(start_points, (n_slopes, 1)) - self.slope_values[:, None]), 0)
@@ -331,7 +328,7 @@ class VUSNumpy():
 
         return existence / n_anomalies[:, None]
 
-    def existence_optimized(self, labels, score, thresholds):
+    def existence_optimized(self, labels, score, thresholds, start_points, end_points):
         """
         Optimized existence computation (~400x faster than trivial implementation).
         Suitable for CPU applications.
@@ -340,8 +337,6 @@ class VUSNumpy():
         n_thresholds = thresholds.shape[0]
         existence = np.zeros((n_slopes, n_thresholds))
         thresholds_dict = {value: index for index, value in enumerate(thresholds)}
-
-        start_points, end_points = self.get_anomalies_coordinates(labels[0])
         n_anomalies = np.full(n_slopes, start_points.shape[0], dtype=int)
         
         all_start_points = np.maximum((np.tile(start_points, (n_slopes, 1)) - self.slope_values[:, None]), 0)
@@ -395,7 +390,7 @@ class VUSNumpy():
 
         return existence / n_anomalies[:, None]
 
-    def existence_matrix(self, labels, score_mask):
+    def existence_matrix(self, labels, score_mask, safe_mask):
         """
         This implementation enables parallel computation for the existence.
         However, it is only ~5 times faster than the trivial implementation 
@@ -407,9 +402,8 @@ class VUSNumpy():
         on an even step.
         """
         # Compute mask for relevant points
-        mask = self._create_safe_mask(labels[0])
-        labels = labels[:, mask]
-        score_mask = score_mask[:, mask]
+        labels = labels[:, safe_mask]
+        score_mask = score_mask[:, safe_mask]
 
         # Normalize labels to 0 or 1
         norm_labels = (labels > 0).astype(np.int8)
@@ -554,37 +548,3 @@ class VUSNumpy():
         anomalies_avg_length = np.mean(anomaly_lengths)
         
         return length, n_anomalies, anomalies_avg_length
-    
-    # An attempt to make a faster average version but it's not worth it check desc.
-    # def harmonic_series(self, n):
-    #     """
-    #     Approximate the nth harmonic number H_n using the Euler-Mascheroni approximation.
-        
-    #     Args:
-    #         n (int): The number of terms in the harmonic series.
-
-    #     Returns:
-    #         float: Approximated value of the harmonic series.
-    #     """
-    #     return digamma(n + 1) + np.euler_gamma
-
-    # def add_slope_approximate(self, label):
-    #     """
-    #     This implementation of approximating the mean slope fast is not correct yet.
-    #     Even, the speed up is 2-3 times faster for CPUs so maybe it's not worth it.
-        
-    #     There is no (up to now) easy/fast way to approximate the mean of the slopes that is 
-    #     significantly faster than just actually computing them.
-    #     """
-    #     pos = self.distance_from_anomaly(label)
-    #     mask = np.where(np.logical_and((pos < self.n_slopes), (pos > 0))) 
-    #     h_l = self.harmonic_series(self.slope_size)
-    #     # mean_slope = np.mean(self.neg_slopes, axis=0)
-
-    #     slope = np.zeros(label.shape)
-    #     slope[mask] = (self.slope_size - pos[mask] + 1) * self.zita + (1 - self.zita) * (h_l - self.harmonic_series(pos[mask] - 1))
-    #     slope /= self.n_slopes
-    #     # slope[(self.slope_size - pos) < 0] = 0
-    #     slope[np.where(label.astype(bool))] = 1
-
-    #     return slope
