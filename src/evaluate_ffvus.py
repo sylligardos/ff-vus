@@ -29,8 +29,8 @@ def evaluate_ffvus_random(testing):
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        labels = labels[:2]
-        filenames = filenames[:2]
+        labels = labels[:10]
+        filenames = filenames[:10]
     else:
         zipped = list(zip(labels, filenames))
         sampled = np.random.choice(len(zipped), size=50, replace=False)
@@ -49,7 +49,7 @@ def evaluate_ffvus_random(testing):
     zita = (1 / math.sqrt(2))
     slopes = 'precomputed' if testing else np.random.choice(['precomputed', 'function'])
     existence = 'optimized' if testing else np.random.choice(['optimized'])   # 'trivial', 'matrix' are also options
-    conf_matrix = 'dynamic' if testing else np.random.choice(['trivial', 'dynamic', 'dynamic_plus'])          
+    conf_matrix = 'dynamic_plus' if testing else np.random.choice(['trivial', 'dynamic', 'dynamic_plus'])          
     interpolation = 'stepwise'  # ['linear', 'stepwise']
     
     ff_vus_numpy = VUSNumpy(
@@ -91,36 +91,38 @@ def evaluate_ffvus_random(testing):
             'Length': label.shape[0],
         }
 
+        # AUC-PR
         auc_pr, auc_pr_time = time_it(auc_pr_wrapper)(label, score, interpolation)
         curr_result.update({
             'AUC-PR': auc_pr,
             'AUC-PR time': auc_pr_time
         })
 
-        ff_auc_pr, ff_auc_time_analysis = ff_auc_numpy.compute(label, score)
-        ff_auc_time = sum([ff_auc_time_analysis[key] for key in ff_auc_time_analysis.keys()])
+        # FF-AUC-PR
+        (ff_auc_pr, ff_auc_time_analysis), ff_auc_time = ff_auc_numpy.compute(label, score)
         curr_result.update({
             'FF-AUC-PR': ff_auc_pr,
             'FF-AUC-PR time': ff_auc_time,
         })
         curr_result.update(ff_auc_time_analysis)
 
-        vus_pr, vus_time = time_it(sylli_get_metrics)(label, score, 'vus_pr', slope_size)
+        # VUS-PR
+        vus_pr, vus_time = sylli_get_metrics(label, score, 'vus_pr', slope_size)
         curr_result.update({
             'VUS-PR': vus_pr,
             'VUS-PR time': vus_time,
         })
 
-        ff_vus_pr, ff_vus_time_analysis = ff_vus_numpy.compute(label, score)
-        ff_vus_time = sum([ff_vus_time_analysis[key] for key in ff_vus_time_analysis.keys()])
+        # FF-VUS-PR
+        (ff_vus_pr, ff_vus_time_analysis), ff_vus_time = ff_vus_numpy.compute(label, score)
         curr_result.update({
             'FF-VUS-PR': ff_vus_pr,
             'FF-VUS-PR time': ff_vus_time,
         })
         curr_result.update(ff_vus_time_analysis)
         
-        ff_vus_pr_gpu, ff_vus_gpu_time_analysis = ff_vus_torch.compute(label, score)
-        ff_vus_gpu_time = sum([ff_vus_gpu_time_analysis[key] for key in ff_vus_gpu_time_analysis.keys()])
+        # FF-VUS-PR-GPU
+        (ff_vus_pr_gpu, ff_vus_gpu_time_analysis), ff_vus_gpu_time = ff_vus_torch.compute(label, score)
         curr_result.update({
             'FF-VUS-PR': ff_vus_pr_gpu,
             'FF-VUS-PR time': ff_vus_gpu_time,
@@ -142,6 +144,12 @@ def evaluate_ffvus_random(testing):
         results.append(curr_result)
 
     df = pd.DataFrame(results)
+    print(df)
+    print(f"AUC-PR - FF-AUC-PR: average dif.: {df["AUC-PR - FF-AUC-PR"].mean()}, max dif.: {df["AUC-PR - FF-AUC-PR"].max()}, avg slow down: {df["AUC-PR Slow down"].mean()}")
+    print(f"VUS-PR - FF-VUS-PR: average dif.: {df["VUS-PR - FF-VUS-PR"].mean()}, max dif.: {df["VUS-PR - FF-VUS-PR"].max()}, avg speed up: {df["VUS-PR Speed up"].mean()}")
+
+    if testing:
+        return 0
     
     curr_experiment_name = f"evaluate_{slope_size}_{step}_{slopes}_{existence}_{conf_matrix}.csv"
     saving_path = os.path.join("experiments", "14_04_2025", "results", curr_experiment_name)

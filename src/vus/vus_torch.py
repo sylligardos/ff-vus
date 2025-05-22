@@ -6,12 +6,16 @@
 """
 
 
-import torch
 from utils.utils import time_it
+
+import torch
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import time
 from tqdm import tqdm
+import psutil
+
 
 class VUSTorch():
     def __init__(
@@ -63,11 +67,12 @@ class VUSTorch():
                 available_memory, total_memory = torch.cuda.mem_get_info()
                 self.max_memory_tokens = available_memory / 50
             else:
-                self.max_memory_tokens = 100e+9
+                available_memory = psutil.virtual_memory().available
+                self.max_memory_tokens = available_memory / 50
         else:
             self.max_memory_tokens = max_memory_tokens
 
-
+    @time_it
     def compute(self, label, score):
         """
         The main computing function of the metric
@@ -76,15 +81,15 @@ class VUSTorch():
         TODO: I think I can do pos in the for loop, so try to remove pos from find_safe_splits
         TODO: Then remove the break into chunks functionality from distance from anomaly
         """
-        tic = time.time()
 
         # Initialization
-        ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = time_it(self.get_anomalies_coordinates_both)(label)
+        ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates_both(label)
+        safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+        (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
 
         sloped_label_mem_size = self.n_slopes * len(label) * 4
-        if sloped_label_mem_size > self.max_memory_tokens:
-            n_splits = int(sloped_label_mem_size // self.max_memory_tokens)
-            safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+        if True or sloped_label_mem_size > self.max_memory_tokens:
+            n_splits = np.ceil(sloped_label_mem_size / self.max_memory_tokens).astype(int)
             split_points = self.find_safe_splits(label, safe_mask, n_splits)
 
             # Total values holders
@@ -93,6 +98,7 @@ class VUSTorch():
             time_slopes = 0
             time_existence = 0
             time_confusion = 0
+            time_pos = 0
             anomalies_found = 0
             total_anomalies = 0
 
@@ -100,25 +106,25 @@ class VUSTorch():
             for curr_split in tqdm(split_points, desc='In distance from anomaly', disable=False if n_splits > 10000 else True):
                 label_c = label[prev_split:curr_split]
                 score_c = score[prev_split:curr_split]
-                pos_c = pos[prev_split:curr_split]
+                safe_mask_c = safe_mask[prev_split:curr_split]
                 prev_split = curr_split
 
                 # Preprocessing
-                pos, time_pos = time_it(self.distance_from_anomaly)(label_c, start_with_edges, end_with_edges)
-                (thresholds, _), time_thresholds = time_it(self.get_unique_thresholds)(score_c)
-                sm, chunk_time_sm = time_it(self.get_score_mask)(score_c, thresholds)
+                pos, chunk_time_pos = self.distance_from_anomaly(label_c, start_with_edges, end_with_edges)
+                sm, chunk_time_sm = self.get_score_mask(score_c, thresholds)
 
-                labels_c, chunk_time_slope = time_it(self.add_slopes)(label_c, pos_c)
-                (anomalies_found_c, total_anomalies_c), chunk_time_existence = time_it(self.compute_existence)(labels_c, sm, pos_c, normalize=False)
-                (fp_c, fn_c, tp_c, pos_c, neg_c, fpr_c), chunk_time_conf = time_it(self.compute_confusion_matrix)(labels_c, sm)
+                labels_c, chunk_time_slope = self.add_slopes(label_c, pos)
+                (anomalies_found_c, total_anomalies_c), chunk_time_existence = self.compute_existence(labels_c, sm, safe_mask_c, normalize=False)
+                (fp_c, fn_c, tp_c, positives_c, neg_c, fpr_c), chunk_time_conf = self.compute_confusion_matrix(labels_c, sm)
 
                 tp += tp_c
                 fp += fp_c
-                positives += pos_c
+                positives += positives_c
                 anomalies_found += anomalies_found_c
                 total_anomalies += total_anomalies_c
 
                 time_sm += chunk_time_sm
+                time_pos += chunk_time_pos
                 time_slopes += chunk_time_slope
                 time_existence += chunk_time_existence
                 time_confusion += chunk_time_conf
@@ -126,21 +132,21 @@ class VUSTorch():
             # Combine all chunks
             existence = anomalies_found / total_anomalies
         else:
-            pos, time_pos = time_it(self.distance_from_anomaly)(label, start_with_edges, end_with_edges)
-            (thresholds, _), time_thresholds = time_it(self.get_unique_thresholds)(score)
-            sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
+            pos, time_pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges)
+            (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
+            sm, time_sm = self.get_score_mask(score, thresholds)
         
-            labels, time_slopes = time_it(self.add_slopes)(label, pos)    
-            existence, time_existence = time_it(self.compute_existence)(labels, sm, pos)
-            (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
+            labels, time_slopes = self.add_slopes(label, pos)    
+            existence, time_existence = self.compute_existence(labels, sm, pos)
+            (fp, fn, tp, positives, negatives, fpr), time_confusion = self.compute_confusion_matrix(labels, sm)
         
-        (precision, recall), time_pr_rec = time_it(self.precision_recall_curve)(tp, fp, positives, existence)
-        vus_pr, time_integral = time_it(self.auc)(recall, precision)
-        toc = time.time()
+        # After chunking
+        (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
+        vus_pr, time_integral = self.auc(recall, precision)
 
         time_analysis = {
-            "Total time": toc - tic,
             "Anomalies coordinates time": time_anomalies_coord,
+            "Safe mask time": time_safe_mask,
             "Thresholds time": time_thresholds,
             "Score mask time": time_sm,
             "Position time": time_pos,
@@ -162,7 +168,7 @@ class VUSTorch():
         valid_splits_mask = ~safe_mask
         valid_splits = torch.nonzero(valid_splits_mask).squeeze(1)
 
-        if valid_splits.numel() == 0 or n_splits <= 1:
+        if valid_splits.numel() == 0 or n_splits < 1:
             return torch.tensor([], device=self.device)
 
         # print(length, n_splits)
@@ -179,12 +185,15 @@ class VUSTorch():
 
         return torch.cat((selected_splits, length[None]), dim=0)
     
+    @time_it
     def get_score_mask(self, score, thresholds):
         return score >= thresholds[:, None]
     
+    @time_it
     def get_unique_thresholds(self, score):
         return torch.sort(torch.unique(score), descending=True)
     
+    @time_it
     def get_anomalies_coordinates_both(self, label: torch.Tensor):
         """
         Return the starting and ending points of all anomalies in label,
@@ -208,6 +217,7 @@ class VUSTorch():
 
         return (start_no_edges, end_no_edges), (start_with_edges, end_with_edges)
     
+    @time_it
     def create_safe_mask(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor) -> torch.Tensor:
         """
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
@@ -228,6 +238,7 @@ class VUSTorch():
         
         return mask
     
+    @time_it
     def distance_from_anomaly(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor, clip: bool = False) -> torch.Tensor:
         """
         Computes distance to closest anomaly boundary for each point. Uses PyTorch for GPU compatibility.
@@ -262,6 +273,7 @@ class VUSTorch():
 
         return pos
     
+    @time_it
     def add_slopes(self, label: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
         """
         Computes slope transformations for multiple slope values.
@@ -290,6 +302,7 @@ class VUSTorch():
 
         return f_pos
 
+    @time_it
     def compute_existence(self, labels: torch.Tensor, score_mask: torch.Tensor, safe_mask: torch.Tensor = None, normalize: bool = True, allow_recursion: bool = True) -> torch.Tensor:
         """
         PyTorch version of the existence matrix computation. This function uses an approximation fallback mechanism
@@ -316,8 +329,8 @@ class VUSTorch():
         s, T = labels.shape
         t = score_mask.shape[0]
         if allow_recursion and (s * t * T > self.max_memory_tokens):
-            n_anomalies_found_0, total_anomalies = self.compute_existence(labels[0:1], score_mask, normalize=False, allow_recursion=False)
-            n_anomalies_found_s, total_anomalies = self.compute_existence(labels[-1:], score_mask, normalize=False, allow_recursion=False)
+            (n_anomalies_found_0, total_anomalies), _ = self.compute_existence(labels[0:1], score_mask, normalize=False, allow_recursion=False)
+            (n_anomalies_found_s, total_anomalies), _ = self.compute_existence(labels[-1:], score_mask, normalize=False, allow_recursion=False)
             
             interp_weights = torch.linspace(0, 1, steps=s, device=device).view(1, -1)
             n_anomalies_found = n_anomalies_found_0 + (n_anomalies_found_s - n_anomalies_found_0) * interp_weights.T
@@ -352,7 +365,7 @@ class VUSTorch():
         else:
             return n_anomalies_found, total_anomalies
 
-    
+    @time_it
     def compute_confusion_matrix(self, labels: torch.Tensor, sm: torch.Tensor):
         if self.conf_matrix_mode == "dynamic":
             conf_matrix = self.conf_matrix_dyn(labels, sm)
@@ -432,6 +445,7 @@ class VUSTorch():
 
         return false_negatives, true_positives, positives
     
+    @time_it
     def precision_recall_curve(self, tp: torch.Tensor, fp: torch.Tensor, positives: torch.Tensor, existence: torch.Tensor = None):
         """
         Computes precision-recall curve points given TP, FP, positives, and optional existence weighting.
@@ -459,6 +473,7 @@ class VUSTorch():
             
         return precision, recall
 
+    @time_it
     def auc(self, x, y):
         width_pr = x[:, 1:] - x[:, :-1]
         height_pr = y[:, 1:]

@@ -82,31 +82,30 @@ class VUSNumpy():
             raise ValueError(f"Unknown argument for `{name}`: {value}. Must be one of {valid_options}.")
         return value
 
+    @time_it
     def compute(self, label, score):
         """
         The main computing function of the metric
         """
-        # TODO: Compute anomaly indexes and position here once, and then feed it to the functions bellow
         # TODO: Compute FP and then apply safe mask, maybe?
 
-        tic = time.time()
-        ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anom_coord = time_it(self.get_anomalies_coordinates)(label)
-        safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
-        
-        thresholds, time_thresholds = time_it(self.get_unique_thresholds)(score)
-        pos, time_pos = time_it(self.distance_from_anomaly)(label, start_with_edges, end_with_edges, clip=True)
-        sm, time_sm = time_it(self.get_score_mask)(score, thresholds)
+        ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anom_coord = self.get_anomalies_coordinates(label)
+        safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
 
-        labels, time_slopes = time_it(self.add_slopes)(label, start_no_edges, end_no_edges, pos)
-        existence, time_existence = time_it(self.compute_existence)(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
-        (fp, fn, tp, positives, negatives, fpr), time_confusion = time_it(self.compute_confusion_matrix)(labels, sm)
-        (precision, recall), time_pr_rec = time_it(self.precision_recall_curve)(tp, fp, positives, existence)
-        vus_pr, time_integral = time_it(self.auc)(recall, precision)
-        toc = time.time()
+        thresholds, time_thresholds = self.get_unique_thresholds(score)
+        pos, time_pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges, clip=True)
+        sm, time_sm = self.get_score_mask(score, thresholds)
+
+        labels, time_slopes = self.add_slopes(label, start_no_edges, end_no_edges, pos)
+        existence, time_existence = self.compute_existence(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
+        (fp, fn, tp, positives, negatives, fpr), time_confusion = self.compute_confusion_matrix(labels, sm)
+        
+        (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
+        vus_pr, time_integral = self.auc(recall, precision)
 
         time_analysis = {
-            "Total time": toc - tic,
             "Anomaly Coordinates time": time_anom_coord,
+            "Safe mask time": time_safe_mask,
             "Thresholds time": time_thresholds,
             "Score mask time": time_sm,
             "Position time": time_pos,
@@ -119,12 +118,15 @@ class VUSNumpy():
 
         return vus_pr, time_analysis
     
+    @time_it
     def get_score_mask(self, score, thresholds):
         return score >= thresholds[:, None]
     
+    @time_it
     def get_unique_thresholds(self, score):
         return np.sort(np.unique(score))[::-1]
     
+    @time_it
     def create_safe_mask(self, label, start_points, end_points):
         """
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
@@ -181,6 +183,7 @@ class VUSNumpy():
 
         return shifted_slopes
     
+    @time_it
     def distance_from_anomaly(self, label, start_points, end_points, clip=False):
         '''
         For every point in the label, returns a time series that shows the distance
@@ -205,6 +208,7 @@ class VUSNumpy():
         
         return pos
     
+    @time_it
     def get_anomalies_coordinates(self, label: np.array):
         """
         Return the starting and ending points of all anomalies in label,
@@ -280,12 +284,14 @@ class VUSNumpy():
 
         return result
     
+    @time_it
     def add_slopes(self, label, start_points, end_points, pos):
         if self.add_slopes_mode == 'precomputed':
             return self.add_slopes_precomputed(label, start_points, end_points)
         else:
             return self.add_slopes_function(label, pos)
     
+    @time_it
     def compute_existence(self, labels, sm, score, thresholds, start_points, end_points, safe_mask):
         if self.existence_mode == 'optimized':
             return self.existence_optimized(labels, score, thresholds, start_points, end_points)
@@ -432,6 +438,7 @@ class VUSNumpy():
 
         return (n_anomalies_found / total_anomalies)
     
+    @time_it
     def compute_confusion_matrix(self, labels, sm):
         """
         Scikit-learn order: tn, fp, fn, tp
@@ -502,6 +509,7 @@ class VUSNumpy():
 
         return false_negatives, true_positives, positives
     
+    @time_it
     def precision_recall_curve(self, tp, fp, positives, existence):
         ones, zeros = np.ones(self.n_slopes)[:, np.newaxis], np.zeros(self.n_slopes)[:, np.newaxis]
         precision = np.hstack((ones, (tp / (tp + fp))))
@@ -512,6 +520,7 @@ class VUSNumpy():
 
         return precision, recall
     
+    @time_it
     def auc(self, x, y):
         if self.interpolation_mode == 'linear':
             return self.linear_interpolation(x, y).mean()

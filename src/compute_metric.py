@@ -25,7 +25,7 @@ import torch
 def load_tsb(testing=False):
     # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['KDD21'] if testing else dataloader.get_dataset_names()
+    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
@@ -116,24 +116,6 @@ def compute_metric(
         })
 
         if metric == 'ff_vus_pr' or metric == 'ff_vus_pr_gpu': 
-            if metric == 'ff_vus_pr_gpu':
-                label, score = torch.tensor(label, device=device), torch.tensor(score, device=device)
-            metric_value, ff_vus_time_analysis = ff_vus.compute(label, score)
-            metric_time = ff_vus_time_analysis["Total time"]
-        else:
-            metric_value, metric_time = time_it(sylli_get_metrics)(label, score, metric, slope_size)
-
-        results[-1].update({
-            'Metric': metric_name,
-            'Metric value': float(metric_value),
-            'Metric time': metric_time,
-        })
-
-        if metric == 'range_auc_pr' or metric == 'vus_pr':
-            results[-1].update({
-                'Slope size': slope_size
-            })
-        elif metric == 'ff_vus_pr':
             results[-1].update({
                 'Slope size': slope_size,
                 'Step': step,  
@@ -141,17 +123,26 @@ def compute_metric(
                 'Existence': existence,
                 'Confusion matrix': conf_matrix,
             })
-            results[-1].update(ff_vus_time_analysis)
-        elif metric == 'ff_vus_pr_gpu':
-            results[-1].update({
-                'Slope size': slope_size,
-                'Step': step,
-                'Slopes': 'function',
-                'Existence': 'matrix',
-                'Confusion matrix': conf_matrix,
-            })
-            results[-1].update(ff_vus_time_analysis)
 
+            if metric == 'ff_vus_pr_gpu':
+                label, score = torch.tensor(label, device=device), torch.tensor(score, device=device)
+                results[-1]['Slopes'], results[-1]['Existence'] = 'function', 'matrix'
+
+            (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute(label, score)
+            results[-1].update(ff_vus_time_analysis)
+        else:
+            if metric == 'range_auc_pr' or metric == 'vus_pr':
+                results[-1].update({
+                    'Slope size': slope_size
+                })
+
+            metric_value, metric_time = sylli_get_metrics(label, score, metric, slope_size)
+
+        results[-1].update({
+            'Metric': metric_name,
+            'Metric value': float(metric_value),
+            'Metric time': metric_time,
+        })   
         
     return pd.DataFrame(results)
 

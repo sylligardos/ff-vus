@@ -13,11 +13,12 @@ from .utils.metrics import metricor
 from .basic_metrics import basic_metricor
 from .affiliation.generics import convert_vector_to_events
 from .affiliation.metrics import pr_from_events
-from utils.utils import auc_pr_wrapper
+from utils.utils import auc_pr_wrapper, time_it
 
 import numpy as np
 
 
+@time_it
 def sylli_get_metrics(label, score, metric, slope_size=None):
     """
     Compute the selected evaluation metric given the labels, anomaly scores,
