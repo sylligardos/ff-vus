@@ -15,6 +15,7 @@ from legacy.sylli_metrics import sylli_get_metrics
 from utils.utils import auc_pr_wrapper, time_it
 from legacy.utils.metrics import metricor
 
+import torch
 import argparse
 import math
 import pandas as pd
@@ -51,7 +52,8 @@ def evaluate_ffvus_random(testing):
     existence = 'optimized' if testing else np.random.choice(['optimized'])   # 'trivial', 'matrix' are also options
     conf_matrix = 'dynamic_plus' if testing else np.random.choice(['trivial', 'dynamic', 'dynamic_plus'])          
     interpolation = 'stepwise'  # ['linear', 'stepwise']
-    
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     ff_vus_numpy = VUSNumpy(
         slope_size=slope_size, 
         step=step, 
@@ -77,11 +79,21 @@ def evaluate_ffvus_random(testing):
         step=1,
         zita=zita, 
         conf_matrix=conf_matrix,
+        device=device,
+    )
+
+    ff_auc_torch = VUSTorch(
+        slope_size=0, 
+        step=1,
+        zita=zita, 
+        existence=False,
+        conf_matrix=conf_matrix,
+        device=device,
     )
 
     print(f">> Current settings: Slope size {slope_size}, step {step}, slopes {slopes}, existence {existence}, conf. matrix {conf_matrix}, interpolation {interpolation}")
     for i, (filename, label, curr_scores) in enumerate(zip(filenames, labels, scores)):
-        detector_idx = np.random.randint(0, 11)
+        detector_idx = 0 if testing else np.random.randint(0, 11)
         detector = detectors[detector_idx]
         score = curr_scores[:, detector_idx]
 
@@ -122,15 +134,23 @@ def evaluate_ffvus_random(testing):
         curr_result.update(ff_vus_time_analysis)
         
         # FF-VUS-PR-GPU
+        label, score = torch.tensor(label, device=device), torch.tensor(score, device=device)
         (ff_vus_pr_gpu, ff_vus_gpu_time_analysis), ff_vus_gpu_time = ff_vus_torch.compute(label, score)
         curr_result.update({
-            'FF-VUS-PR': ff_vus_pr_gpu,
-            'FF-VUS-PR time': ff_vus_gpu_time,
+            'FF-VUS-PR-GPU': ff_vus_pr_gpu.item(),
+            'FF-VUS-PR-GPU time': ff_vus_gpu_time,
         })
         curr_result.update(ff_vus_gpu_time_analysis)
 
-        print(f"({i}) AUC-PR - FF-AUC-PR: {abs(auc_pr - ff_auc_pr):.5f}, VUS-PR - FF-VUS-PR: {abs(vus_pr - ff_vus_pr):.5f}, AUC Slow down: {(ff_auc_time / auc_pr_time):.2f}, VUS Speed up: {(vus_time / ff_vus_time):.2f}, Length: {label.shape[0]}")
-        # print(f">> AUC-PR: {auc_pr:.3f}, FF AUC-PR: {ff_auc_pr:.3f}, VUS-PR: {vus_pr:.3f}, FF VUS-PR: {ff_vus_pr:.3f}")
+        # FF-AUC-PR-GPU
+        (ff_auc_pr_gpu, ff_auc_gpu_time_analysis), ff_auc_gpu_time = ff_auc_torch.compute(label, score)
+        curr_result.update({
+            'FF-AUC-PR-GPU': ff_auc_pr_gpu.item(),
+            'FF-AUC-PR-GPU time': ff_auc_gpu_time,
+        })
+        curr_result.update(ff_auc_gpu_time_analysis)
+
+        print(f"[{i}] ΔAUC: {abs(auc_pr - ff_auc_pr):.2e} | ΔAUC-GPU: {abs(auc_pr - ff_auc_pr_gpu):.2e} | ΔVUS: {abs(vus_pr - ff_vus_pr):.2e} | ΔVUS-GPU: {abs(vus_pr - ff_vus_pr_gpu):.2e} | AUCx{ff_auc_time / auc_pr_time:.2f} | AUC-GPUx{ff_auc_gpu_time / auc_pr_time:.2f} | VUS/{vus_time / ff_vus_time:.2f} | VUS-GPU/{vus_time / ff_vus_gpu_time:.2f} | Len:{label.shape[0]}")
         
         curr_result.update({
             "AUC-PR - FF-AUC-PR": abs(auc_pr - ff_auc_pr), 
@@ -139,6 +159,12 @@ def evaluate_ffvus_random(testing):
             "VUS-PR Speed up": vus_time / ff_vus_time,
             "AUC-PR equal": abs(auc_pr - ff_auc_pr) < 1e-14,
             "VUS-PR equal": abs(vus_pr - ff_vus_pr) < 1e-14,
+            "VUS-PR - FF-VUS-PR-GPU": abs(vus_pr - ff_vus_pr_gpu).item(),
+            "AUC-PR - FF-AUC-PR-GPU": abs(auc_pr - ff_auc_pr_gpu).item(),
+            "AUC-PR-GPU Slow down": ff_auc_gpu_time / auc_pr_time,
+            "VUS-PR-GPU Speed up": vus_time / ff_vus_gpu_time,
+            "AUC-PR-GPU equal": abs(auc_pr - ff_auc_pr_gpu).item() < 1e-14,
+            "VUS-PR-GPU equal": abs(vus_pr - ff_vus_pr_gpu).item() < 1e-14,
         })
         
         results.append(curr_result)
@@ -146,7 +172,9 @@ def evaluate_ffvus_random(testing):
     df = pd.DataFrame(results)
     print(df)
     print(f"AUC-PR - FF-AUC-PR: average dif.: {df["AUC-PR - FF-AUC-PR"].mean()}, max dif.: {df["AUC-PR - FF-AUC-PR"].max()}, avg slow down: {df["AUC-PR Slow down"].mean()}")
-    print(f"VUS-PR - FF-VUS-PR: average dif.: {df["VUS-PR - FF-VUS-PR"].mean()}, max dif.: {df["VUS-PR - FF-VUS-PR"].max()}, avg speed up: {df["VUS-PR Speed up"].mean()}")
+    print(f"VUS-PR - FF-VUS-PR: average dif.: {df['VUS-PR - FF-VUS-PR'].mean()}, max dif.: {df['VUS-PR - FF-VUS-PR'].max()}, avg speed up: {df['VUS-PR Speed up'].mean()}")
+    print(f"AUC-PR - FF-AUC-PR-GPU: average dif.: {df['AUC-PR - FF-AUC-PR-GPU'].mean()}, max dif.: {df['AUC-PR - FF-AUC-PR-GPU'].max()}, avg slow down: {df['AUC-PR-GPU Slow down'].mean()}")
+    print(f"VUS-PR - FF-VUS-PR-GPU: average dif.: {df['VUS-PR - FF-VUS-PR-GPU'].mean()}, max dif.: {df['VUS-PR - FF-VUS-PR-GPU'].max()}, avg speed up: {df['VUS-PR-GPU Speed up'].mean()}")
 
     if testing:
         return 0

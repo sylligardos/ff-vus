@@ -23,6 +23,7 @@ class VUSTorch():
             slope_size=100, 
             step=1, 
             zita=(1/torch.sqrt(torch.tensor(2))), 
+            existence=True,
             conf_matrix='dynamic',
             device=None,
             max_memory_tokens=None,
@@ -52,6 +53,7 @@ class VUSTorch():
         self.slope_size = slope_size
         self.step = step
         self.zita = zita
+        self.existence = existence
         
         self.slope_values = torch.arange(start=0, end=self.slope_size + 1, step=self.step, device=self.device) if step > 0 else torch.tensor([0])
         self.n_slopes = self.slope_values.shape[0]
@@ -64,13 +66,24 @@ class VUSTorch():
 
         if max_memory_tokens is None:
             if self.device == 'cuda':
-                available_memory, total_memory = torch.cuda.mem_get_info()
+                available_memory, _ = torch.cuda.mem_get_info()
                 self.max_memory_tokens = available_memory / 50
             else:
                 available_memory = psutil.virtual_memory().available
                 self.max_memory_tokens = available_memory / 50
         else:
             self.max_memory_tokens = max_memory_tokens
+
+    def update_max_memory_tokens(self):
+        """
+        Update self.max_memory_tokens according to the currently available memory,
+       """
+        if self.device == 'cuda':
+            available_memory, _ = torch.cuda.mem_get_info()
+            self.max_memory_tokens = available_memory / 50
+        else:
+            available_memory = psutil.virtual_memory().available
+            self.max_memory_tokens = available_memory / 50
 
     @time_it
     def compute(self, label, score):
@@ -83,63 +96,45 @@ class VUSTorch():
         """
 
         # Initialization
+        self.update_max_memory_tokens()
         ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates_both(label)
         safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
         (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
 
+        # Number of chunks required to fit into memory
         sloped_label_mem_size = self.n_slopes * len(label) * 4
-        if True or sloped_label_mem_size > self.max_memory_tokens:
-            n_splits = np.ceil(sloped_label_mem_size / self.max_memory_tokens).astype(int)
-            split_points = self.find_safe_splits(label, safe_mask, n_splits)
+        n_splits = np.ceil(sloped_label_mem_size / self.max_memory_tokens).astype(int)
+        split_points = self.find_safe_splits(label, safe_mask, n_splits)
 
-            # Total values holders
-            fp, tp, positives = 0, 0, 0
-            time_sm = 0
-            time_slopes = 0
-            time_existence = 0
-            time_confusion = 0
-            time_pos = 0
-            anomalies_found = 0
-            total_anomalies = 0
+        # Total values holders
+        fp = tp = positives = anomalies_found = total_anomalies = time_sm = time_slopes = time_existence = time_confusion = time_pos = 0
 
-            prev_split = 0
-            for curr_split in tqdm(split_points, desc='In distance from anomaly', disable=False if n_splits > 10000 else True):
-                label_c = label[prev_split:curr_split]
-                score_c = score[prev_split:curr_split]
-                safe_mask_c = safe_mask[prev_split:curr_split]
-                prev_split = curr_split
+        # Computation in chunks
+        prev_split = 0
+        for curr_split in tqdm(split_points, desc='In distance from anomaly', disable=False if n_splits > 10000 else True):
+            label_c = label[prev_split:curr_split]
+            score_c = score[prev_split:curr_split]
+            safe_mask_c = safe_mask[prev_split:curr_split]
+            prev_split = curr_split
 
-                # Preprocessing
-                pos, chunk_time_pos = self.distance_from_anomaly(label_c, start_with_edges, end_with_edges)
-                sm, chunk_time_sm = self.get_score_mask(score_c, thresholds)
+            # Preprocessing
+            pos, chunk_time_pos = self.distance_from_anomaly(label_c, start_with_edges, end_with_edges)
+            sm, chunk_time_sm = self.get_score_mask(score_c, thresholds)
 
-                labels_c, chunk_time_slope = self.add_slopes(label_c, pos)
-                (anomalies_found_c, total_anomalies_c), chunk_time_existence = self.compute_existence(labels_c, sm, safe_mask_c, normalize=False)
-                (fp_c, fn_c, tp_c, positives_c, neg_c, fpr_c), chunk_time_conf = self.compute_confusion_matrix(labels_c, sm)
+            # Main computation
+            labels_c, chunk_time_slope = self.add_slopes(label_c, pos)
+            (anomalies_found_c, total_anomalies_c), chunk_time_existence = self.compute_existence(labels_c, sm, safe_mask_c, normalize=False)
+            (fp_c, fn_c, tp_c, positives_c, neg_c, fpr_c), chunk_time_conf = self.compute_confusion_matrix(labels_c, sm)
 
-                tp += tp_c
-                fp += fp_c
-                positives += positives_c
-                anomalies_found += anomalies_found_c
-                total_anomalies += total_anomalies_c
+            # Accumulate results and timing from each chunk
+            tp, fp, positives = tp + tp_c, fp + fp_c, positives + positives_c
+            anomalies_found, total_anomalies = anomalies_found + anomalies_found_c, total_anomalies + total_anomalies_c
+            time_sm, time_pos, time_slopes = time_sm + chunk_time_sm, time_pos + chunk_time_pos, time_slopes + chunk_time_slope
+            time_existence, time_confusion = time_existence + chunk_time_existence, time_confusion + chunk_time_conf
 
-                time_sm += chunk_time_sm
-                time_pos += chunk_time_pos
-                time_slopes += chunk_time_slope
-                time_existence += chunk_time_existence
-                time_confusion += chunk_time_conf
+        # Combine existence of all chunks
+        existence = anomalies_found / total_anomalies if self.existence else torch.ones((self.n_slopes, thresholds.shape[0]))
 
-            # Combine all chunks
-            existence = anomalies_found / total_anomalies
-        else:
-            pos, time_pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges)
-            (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
-            sm, time_sm = self.get_score_mask(score, thresholds)
-        
-            labels, time_slopes = self.add_slopes(label, pos)    
-            existence, time_existence = self.compute_existence(labels, sm, pos)
-            (fp, fn, tp, positives, negatives, fpr), time_confusion = self.compute_confusion_matrix(labels, sm)
-        
         # After chunking
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
         vus_pr, time_integral = self.auc(recall, precision)
@@ -315,6 +310,8 @@ class VUSTorch():
         Returns:
             Tensor of shape [s, t] representing existence score (fraction of anomalies found).
         """
+        if not self.existence:
+            return 0 if normalize else (0, 0)
         device = labels.device
 
         # Compute mask for relevant points
