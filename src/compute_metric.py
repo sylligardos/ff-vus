@@ -181,7 +181,7 @@ def compute_metric_over_dataset(
         if metric == 'ff_vus_pr':
             filename += f"_{slopes}_{existence}"
         filename += ".csv"
-        saving_path = os.path.join('experiments', 'vus_ffvus_auc_synthetic')
+        saving_path = os.path.join('experiments', 'preliminary')
 
         # Save the results
         print(filename)
