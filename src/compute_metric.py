@@ -12,7 +12,7 @@ from vus.vus_torch import VUSTorch
 from utils.scoreloader import Scoreloader
 from utils.dataloader import Dataloader
 from legacy.sylli_metrics import sylli_get_metrics
-from utils.utils import time_it, analyze_label, natural_keys
+from utils.utils import analyze_label, natural_keys
 
 import argparse
 import pandas as pd
