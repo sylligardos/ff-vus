@@ -25,7 +25,7 @@ import torch
 def load_tsb(testing=False):
     # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['YAHOO'] if testing else dataloader.get_dataset_names()
+    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
@@ -165,7 +165,7 @@ def compute_metric_over_dataset(
         raise ValueError(f"Wrong argument for dataset: {dataset}")
 
     if metric == 'all':
-        metrics = ['ff_vus_pr', 'ff_vus_pr_gpu', 'auc_pr', 'affiliation', 'range_auc_pr'] # , 'vus_pr', 'rf'
+        metrics = ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'affiliation', 'range_auc_pr', 'vus_pr', 'rf']
     else:
         metrics = [metric]
 
@@ -181,7 +181,7 @@ def compute_metric_over_dataset(
         if metric == 'ff_vus_pr':
             filename += f"_{slopes}_{existence}"
         filename += ".csv"
-        saving_path = os.path.join('experiments', 'vus_ffvus_auc_synthetic')
+        saving_path = os.path.join('experiments', 'preliminary')
 
         # Save the results
         print(filename)
@@ -189,6 +189,9 @@ def compute_metric_over_dataset(
         print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
         
         if not testing:
+            os.makedirs(os.path.join(saving_path, 'results'), exist_ok=True)
+            os.makedirs(os.path.join(saving_path, 'info'), exist_ok=True)
+
             df.to_csv(os.path.join(saving_path, 'results', filename))
 
             info_df = pd.DataFrame([{

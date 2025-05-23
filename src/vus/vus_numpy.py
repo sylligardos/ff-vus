@@ -223,12 +223,12 @@ class VUSNumpy():
         diff = np.diff(label)
         start_no_edges = np.where(diff == 1)[0] + 1
         end_no_edges = np.where(diff == -1)[0]
-
-        if start_no_edges.shape != end_no_edges.shape:
-            raise ValueError(f'The number of start and end points of anomalies does not match, {start_points} != {end_points}')
         
         start_with_edges = np.append([0], start_no_edges) if label[0] else start_no_edges
         end_with_edges = np.append(end_no_edges, len(label) - 1) if label[-1] else end_no_edges
+
+        if start_with_edges.shape != end_with_edges.shape:
+            raise ValueError(f'The number of start and end points of anomalies does not match, {start_with_edges} != {end_with_edges}')
             
         return (start_no_edges, end_no_edges), (start_with_edges, end_with_edges)
 

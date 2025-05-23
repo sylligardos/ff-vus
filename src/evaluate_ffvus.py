@@ -26,12 +26,12 @@ import numpy as np
 def evaluate_ffvus_random(testing):
     tic = time.time()
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['YAHOO'] if testing else dataloader.get_dataset_names()
+    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        labels = labels[:10]
-        filenames = filenames[:10]
+        labels = labels[:2]
+        filenames = filenames[:2]
     else:
         zipped = list(zip(labels, filenames))
         sampled = np.random.choice(len(zipped), size=50, replace=False)

@@ -26,7 +26,6 @@ class VUSTorch():
             existence=True,
             conf_matrix='dynamic',
             device=None,
-            max_memory_tokens=None,
         ):
         """
         Initialize the torch version of the VUS metric.
@@ -64,26 +63,19 @@ class VUSTorch():
         else:
             raise ValueError(f"Unknown argument for conf_matrix: {conf_matrix}. 'conf_matrix' should be one of {conf_matrix_args}")
 
-        if max_memory_tokens is None:
-            if self.device == 'cuda':
-                available_memory, _ = torch.cuda.mem_get_info()
-                self.max_memory_tokens = available_memory / 50
-            else:
-                available_memory = psutil.virtual_memory().available
-                self.max_memory_tokens = available_memory / 50
-        else:
-            self.max_memory_tokens = max_memory_tokens
 
-    def update_max_memory_tokens(self):
+    def update_max_memory_tokens(self, divider=50):
         """
-        Update self.max_memory_tokens according to the currently available memory,
+        Update self.max_memory_tokens according to the currently available memory.
+
+        Changing the divider makes a little difference
        """
         if self.device == 'cuda':
             available_memory, _ = torch.cuda.mem_get_info()
-            self.max_memory_tokens = available_memory / 50
+            self.max_memory_tokens = available_memory / divider
         else:
             available_memory = psutil.virtual_memory().available
-            self.max_memory_tokens = available_memory / 50
+            self.max_memory_tokens = available_memory / divider
 
     @time_it
     def compute(self, label, score):
@@ -91,8 +83,8 @@ class VUSTorch():
         The main computing function of the metric
         
         TODO: Try smaller types when possible, e.g. thresholds. Is it worth it?
-        TODO: I think I can do pos in the for loop, so try to remove pos from find_safe_splits
-        TODO: Then remove the break into chunks functionality from distance from anomaly
+        TODO: Computing what you need in the beggining and then applying safe mask to everything makes A LOT OF sense!!
+            We can do it in a wrapper function ! E.g. compute_big
         """
 
         # Initialization
@@ -111,7 +103,7 @@ class VUSTorch():
 
         # Computation in chunks
         prev_split = 0
-        for curr_split in tqdm(split_points, desc='In distance from anomaly', disable=False if n_splits > 10000 else True):
+        for curr_split in tqdm(split_points, desc='In distance from anomaly', disable=False if n_splits > 10 else True):
             label_c = label[prev_split:curr_split]
             score_c = score[prev_split:curr_split]
             safe_mask_c = safe_mask[prev_split:curr_split]
@@ -133,7 +125,7 @@ class VUSTorch():
             time_existence, time_confusion = time_existence + chunk_time_existence, time_confusion + chunk_time_conf
 
         # Combine existence of all chunks
-        existence = anomalies_found / total_anomalies if self.existence else torch.ones((self.n_slopes, thresholds.shape[0]))
+        existence = anomalies_found / total_anomalies if self.existence else torch.ones((self.n_slopes, thresholds.shape[0]), device=self.device)
 
         # After chunking
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
@@ -161,7 +153,9 @@ class VUSTorch():
         """
         length = torch.tensor(label.shape[0], device=self.device)
         valid_splits_mask = ~safe_mask
-        valid_splits = torch.nonzero(valid_splits_mask).squeeze(1)
+        
+        step = max(1, valid_splits_mask.sum().item() // (n_splits * 10))
+        valid_splits = torch.nonzero(valid_splits_mask)[::step].squeeze(1)
 
         if valid_splits.numel() == 0 or n_splits < 1:
             return torch.tensor([], device=self.device)
@@ -204,11 +198,11 @@ class VUSTorch():
         start_no_edges = torch.where(diff == 1)[0] + 1
         end_no_edges = torch.where(diff == -1)[0]
         
-        if start_no_edges.shape != end_no_edges.shape:
-            raise ValueError(f"The number of start and end points of anomalies does not match: {start_with_edges} != {end_with_edges}")
-
         start_with_edges = torch.cat((torch.tensor([0], device=device), start_no_edges)) if label[0] else start_no_edges
         end_with_edges = torch.cat((end_no_edges, torch.tensor([len(label) - 1], device=device))) if label[-1] else end_no_edges
+
+        if start_with_edges.shape != end_with_edges.shape:
+            raise ValueError(f'The number of start and end points of anomalies does not match, {start_with_edges} != {end_with_edges}')
 
         return (start_no_edges, end_no_edges), (start_with_edges, end_with_edges)
     
@@ -248,18 +242,18 @@ class VUSTorch():
         anomaly_boundaries = torch.cat([start_points, end_points])
         indices = torch.arange(length, device=device)[:, None]
 
-        # pos_mem_size = len(anomaly_boundaries) * length * pos.element_size()
-        # if pos_mem_size > self.max_memory_tokens:
-        #     n_chunks = max(1, pos_mem_size // self.max_memory_tokens)
-        #     chunk_size = int(max(1, len(anomaly_boundaries) // n_chunks))
+        pos_mem_size = len(anomaly_boundaries) * length * pos.element_size()
+        if pos_mem_size > self.max_memory_tokens:
+            n_chunks = max(1, pos_mem_size // self.max_memory_tokens)
+            chunk_size = int(max(1, len(anomaly_boundaries) // n_chunks))
 
-        #     for chunk in tqdm(anomaly_boundaries.split(chunk_size), desc='In distance from anomaly', disable=False if n_chunks > 10000 else True):
-        #         curr_distances = torch.abs(indices - chunk[None, :])
-        #         curr_min_distances = curr_distances.min(dim=1).values
-        #         pos = torch.minimum(pos, curr_min_distances)
-        # else:
-        distances = torch.abs(indices - anomaly_boundaries)
-        pos = torch.min(distances, dim=1).values
+            for chunk in tqdm(anomaly_boundaries.split(chunk_size), desc='In distance from anomaly', disable=False if n_chunks > 10000 else True):
+                curr_distances = torch.abs(indices - chunk[None, :])
+                curr_min_distances = curr_distances.min(dim=1).values
+                pos = torch.minimum(pos, curr_min_distances)
+        else:
+            distances = torch.abs(indices - anomaly_boundaries)
+            pos = torch.min(distances, dim=1).values
         
         if clip:
             pos = pos.clone()
