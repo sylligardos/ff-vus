@@ -79,17 +79,26 @@ class VUSTorch():
 
     @time_it
     def compute_wrapper(self, label, score):
+        """
+        Not as simple as it seems. Values are not the same for any of the important values
+        returned by compute. At least existence should definately be the same
+        """
         # Compute safe mask
-        
+        ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates_both(label)
+        safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=True)
 
         # Compute FP and TN
+        # fp = score[~safe_mask].sum()
+        # tn = ~score[safe_mask].sum()
 
         # Apply mask
+        label = label[safe_mask]
+        score = score[safe_mask]
 
-        # Compute as before 
-        (tp, fp, positives, existence, time_analysis), metric_time = self.compute(label, score)
+        # Compute as before
+        (tp, fp, positives, existence, time_analysis), metric_time = self.compute(label, score, conclude_computation=False)
 
-        # Add previosly found FP and TN
+        # Add previously found FP and TN
 
         # Finish off computation
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
@@ -140,6 +149,8 @@ class VUSTorch():
 
             # Main computation
             labels_c, chunk_time_slope = self.add_slopes(label_c, pos)
+            sns.lineplot(labels_c.T)
+            plt.show()
             (anomalies_found_c, total_anomalies_c), chunk_time_existence = self.compute_existence(labels_c, sm, safe_mask_c, normalize=False)
             (fp_c, fn_c, tp_c, positives_c, neg_c, fpr_c), chunk_time_conf = self.compute_confusion_matrix(labels_c, sm)
 
@@ -165,8 +176,18 @@ class VUSTorch():
 
         # After chunking
         if not conclude_computation:
+            print(tp.mean())
+            print(fp.mean())
+            print(positives.mean())
+            print(existence.mean())
+            exit()
             return tp, fp, positives, existence, time_analysis
         else:
+            print(tp.mean())
+            print(fp.mean())
+            print(positives.mean())
+            print(existence.mean())
+            exit()
             (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
             vus_pr, time_integral = self.auc(recall, precision)
 
@@ -184,7 +205,7 @@ class VUSTorch():
         """
         length = torch.tensor(label.shape[0], device=self.device)
         valid_splits_mask = ~safe_mask
-        
+
         step = max(1, valid_splits_mask.sum().item() // (n_splits * 10))
         valid_splits = torch.nonzero(valid_splits_mask)[::step].squeeze(1)
 
@@ -238,7 +259,7 @@ class VUSTorch():
         return (start_no_edges, end_no_edges), (start_with_edges, end_with_edges)
     
     @time_it
-    def create_safe_mask(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor) -> torch.Tensor:
+    def create_safe_mask(self, label: torch.Tensor, start_points: torch.Tensor, end_points: torch.Tensor, extra_safe: bool = False) -> torch.Tensor:
         """
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
         than the bigger slope. This allows us to mask the label safely, without changing anything in the implementation.
@@ -246,7 +267,7 @@ class VUSTorch():
         length = torch.tensor(label.shape[0])
         mask = torch.zeros(length, dtype=torch.int8, device=self.device)
         
-        start_safe_points = torch.maximum(start_points - (self.slope_size + 1), mask[0])
+        start_safe_points = torch.maximum(start_points - (self.slope_size + 1 + extra_safe), mask[0])
         end_safe_points = torch.minimum(end_points + (self.slope_size + 1) + 1, length - 1)
 
         mask[start_safe_points] += 1
@@ -394,16 +415,6 @@ class VUSTorch():
         else:
             conf_matrix = self.conf_matrix_dyn_plus(labels, sm)
         fn, tp, positives = conf_matrix
-
-        # conf_matrix = self.conf_matrix_dyn(labels, sm)
-        # conf_matrix_1 = self.conf_matrix_dyn_plus(labels, sm)
-        # fn, tp, positives = conf_matrix
-        # fn_1, tp_1, positives_1 = conf_matrix_1
-        # print(torch.where(tp != tp_1))
-        # # print(torch.mean(tp - tp_1), torch.max(tp - tp_1), torch.all(tp == tp_1))
-        # # print(torch.mean(fn - fn_1), torch.max(fn - fn_1), torch.all(fn == fn_1))
-        # # print(torch.mean(positives - positives_1), torch.max(positives - positives_1), torch.all(positives == positives_1))
-        # exit()
 
         fp = sm.sum(axis=1) - tp
         negatives = labels[0].shape[0] - positives

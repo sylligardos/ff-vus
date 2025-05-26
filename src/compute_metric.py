@@ -25,12 +25,12 @@ import torch
 def load_tsb(testing=False):
     # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
+    datasets = ['Occupancy'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        labels = labels[:10]
-        filenames = filenames[:10]
+        labels = labels[:2]
+        filenames = filenames[:2]
 
     scoreloader = Scoreloader('data/scores')
     detectors = scoreloader.get_detector_names()
@@ -129,6 +129,7 @@ def compute_metric(
                 results[-1]['Slopes'], results[-1]['Existence'] = 'function', 'matrix'
 
             (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute(label, score)
+            # (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute_wrapper(label, score)
             results[-1].update(ff_vus_time_analysis)
         else:
             if metric == 'range_auc_pr' or metric == 'vus_pr':
