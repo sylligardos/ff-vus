@@ -78,7 +78,30 @@ class VUSTorch():
             self.max_memory_tokens = available_memory / divider
 
     @time_it
-    def compute(self, label, score):
+    def compute_wrapper(self, label, score):
+        # Compute safe mask
+        
+
+        # Compute FP and TN
+
+        # Apply mask
+
+        # Compute as before 
+        (tp, fp, positives, existence, time_analysis), metric_time = self.compute(label, score)
+
+        # Add previosly found FP and TN
+
+        # Finish off computation
+        (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
+        vus_pr, time_integral = self.auc(recall, precision)
+
+        time_analysis.update({
+            "Precision recall curve time": time_pr_rec,
+            "Integral time": time_integral,
+        })
+
+    @time_it
+    def compute(self, label, score, conclude_computation=True):
         """
         The main computing function of the metric
         
@@ -89,6 +112,8 @@ class VUSTorch():
 
         # Initialization
         self.update_max_memory_tokens()
+        time_analysis = {}
+
         ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates_both(label)
         safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
         (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
@@ -127,11 +152,7 @@ class VUSTorch():
         # Combine existence of all chunks
         existence = anomalies_found / total_anomalies if self.existence else torch.ones((self.n_slopes, thresholds.shape[0]), device=self.device)
 
-        # After chunking
-        (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
-        vus_pr, time_integral = self.auc(recall, precision)
-
-        time_analysis = {
+        time_analysis.update({
             "Anomalies coordinates time": time_anomalies_coord,
             "Safe mask time": time_safe_mask,
             "Thresholds time": time_thresholds,
@@ -140,11 +161,21 @@ class VUSTorch():
             "Slopes time": time_slopes,
             "Existence time": time_existence,
             "Confusion matrix time": time_confusion,
-            "Precision recall curve time": time_pr_rec,
-            "Integral time": time_integral,
-        }
+        })
 
-        return vus_pr, time_analysis
+        # After chunking
+        if not conclude_computation:
+            return tp, fp, positives, existence, time_analysis
+        else:
+            (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
+            vus_pr, time_integral = self.auc(recall, precision)
+
+            time_analysis.update({
+                "Precision recall curve time": time_pr_rec,
+                "Integral time": time_integral,
+            })
+
+            return vus_pr, time_analysis
 
     def find_safe_splits(self, label, safe_mask, n_splits):
         """
