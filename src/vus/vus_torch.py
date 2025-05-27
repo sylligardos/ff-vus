@@ -15,6 +15,7 @@ import seaborn as sns
 import time
 from tqdm import tqdm
 import psutil
+import tracemalloc
 
 
 class VUSTorch():
@@ -23,6 +24,7 @@ class VUSTorch():
             slope_size=100, 
             step=1, 
             zita=(1/torch.sqrt(torch.tensor(2))), 
+            apply_mask=False,
             existence=True,
             conf_matrix='dynamic',
             device=None,
@@ -80,25 +82,46 @@ class VUSTorch():
     @time_it
     def compute_wrapper(self, label, score):
         """
-        Not as simple as it seems. Values are not the same for any of the important values
-        returned by compute. At least existence should definately be the same
+        
+        TODO: Can we skip having to create sm?
         """
         # Compute safe mask
         ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates_both(label)
         safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=True)
 
-        # Compute FP and TN
-        # fp = score[~safe_mask].sum()
-        # tn = ~score[safe_mask].sum()
+        # Compute False Positives
+        (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
 
+
+        # Method 1: Using score mask
+        tracemalloc.start()
+        start_time1 = time.time()
+        sm, chunk_time_sm = self.get_score_mask(score, thresholds)
+        pred_pos1 = sm.sum(axis=1)
+        elapsed_time1 = time.time() - start_time1
+        current1, peak1 = tracemalloc.get_traced_memory()
+        print(f"Method 1 (score mask) pred_pos time: {elapsed_time1:.6f} seconds")
+        print(f"Method 1 (score mask) memory usage: current={current1 / 1024:.2f} KB, peak={peak1 / 1024:.2f} KB")
+        tracemalloc.stop()
+
+        # Method 2: Using unique counts and cumsum
+        tracemalloc.start()
+        start_time2 = time.time()
+        idx, counts = score.unique(return_counts=True)
+        pred_pos2 = counts.flip(0).cumsum(0)
+        elapsed_time2 = time.time() - start_time2
+        current2, peak2 = tracemalloc.get_traced_memory()
+        print(f"Method 2 (unique counts) pred_pos time: {elapsed_time2:.6f} seconds")
+        print(f"Method 2 (unique counts) memory usage: current={current2 / 1024:.2f} KB, peak={peak2 / 1024:.2f} KB")
+        tracemalloc.stop()
+        exit()
+        
         # Apply mask
-        label = label[safe_mask]
-        score = score[safe_mask]
+        label_masked = label[safe_mask]
+        score_masked = score[safe_mask]
 
-        # Compute as before
-        (tp, fp, positives, existence, time_analysis), metric_time = self.compute(label, score, conclude_computation=False)
-
-        # Add previously found FP and TN
+        (tp, fp, positives, existence, time_analysis), metric_time = self.compute(label_masked, score_masked, conclude_computation=False, thresholds=thresholds)
+        fp = sm.sum(axis=1) - tp
 
         # Finish off computation
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
@@ -109,8 +132,10 @@ class VUSTorch():
             "Integral time": time_integral,
         })
 
+        return vus_pr, time_analysis
+
     @time_it
-    def compute(self, label, score, conclude_computation=True):
+    def compute(self, label, score, conclude_computation=True, thresholds=None):
         """
         The main computing function of the metric
         
@@ -125,7 +150,11 @@ class VUSTorch():
 
         ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates_both(label)
         safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
-        (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
+        
+        if thresholds is None:
+            (thresholds, _), time_thresholds = self.get_unique_thresholds(score) 
+        else:
+            time_thresholds = 0
 
         # Number of chunks required to fit into memory
         sloped_label_mem_size = self.n_slopes * len(label) * 4
@@ -149,8 +178,8 @@ class VUSTorch():
 
             # Main computation
             labels_c, chunk_time_slope = self.add_slopes(label_c, pos)
-            sns.lineplot(labels_c.T)
-            plt.show()
+            # sns.lineplot(labels_c.T)
+            # plt.show()
             (anomalies_found_c, total_anomalies_c), chunk_time_existence = self.compute_existence(labels_c, sm, safe_mask_c, normalize=False)
             (fp_c, fn_c, tp_c, positives_c, neg_c, fpr_c), chunk_time_conf = self.compute_confusion_matrix(labels_c, sm)
 
@@ -176,18 +205,8 @@ class VUSTorch():
 
         # After chunking
         if not conclude_computation:
-            print(tp.mean())
-            print(fp.mean())
-            print(positives.mean())
-            print(existence.mean())
-            exit()
             return tp, fp, positives, existence, time_analysis
         else:
-            print(tp.mean())
-            print(fp.mean())
-            print(positives.mean())
-            print(existence.mean())
-            exit()
             (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
             vus_pr, time_integral = self.auc(recall, precision)
 
@@ -266,16 +285,42 @@ class VUSTorch():
         """
         length = torch.tensor(label.shape[0])
         mask = torch.zeros(length, dtype=torch.int8, device=self.device)
+
+        safe_extension = self.slope_size + 1 + int(extra_safe)
         
-        start_safe_points = torch.maximum(start_points - (self.slope_size + 1 + extra_safe), mask[0])
-        end_safe_points = torch.minimum(end_points + (self.slope_size + 1) + 1, length - 1)
+        start_safe_points = torch.clamp(start_points - safe_extension, min=0)
+        end_safe_points = torch.clamp(end_points + safe_extension + 1, max=length - 1)
 
-        mask[start_safe_points] += 1
-        mask[end_safe_points] -= 1
+        # print((start_safe_points == end_safe_points))
+        # print((start_safe_points == end_safe_points).any())
+        # exit()
+        
+        add_start = torch.ones_like(start_safe_points, dtype=torch.int8, device=self.device)
+        add_end = torch.ones_like(end_safe_points, dtype=torch.int8, device=self.device).mul(-1)
 
+        mask.index_add_(0, start_safe_points, add_start)
+        mask.index_add_(0, end_safe_points, add_end)
+
+        # Check if the number of 1s in mask equals the number of start_safe_points
+        # print(f"mask == 1 count: {(mask == 1).sum().item()}, start_safe_points: {start_safe_points.numel()}")
+        # print(f"mask == -1 count: {(mask == -1).sum().item()}, end_safe_points: {end_safe_points.numel()}")
+        
+        # Plot label with start/end points and their safe counterparts, and mask in a subfigure below
+        # print(f"Number of start points: {start_points.numel()}, Number of end points: {end_points.numel()}")
+        # fig, axs = plt.subplots(3, 1, figsize=(12, 4), sharex=True)
+        # axs[0].plot(label.cpu().numpy(), color='red', label='Label')
+        # axs[1].plot(mask.cpu().numpy(), color='purple', label='Mask')
+        
         mask = mask.cumsum(dim=0)
         mask = mask > 0
-        mask[-1] = label[-1]
+        if extra_safe:      # TODO: Fix this bro
+            mask[-1] = (end_safe_points[-1] == (length - 1))
+        else:
+            mask[-1] = label[-1]
+
+        # axs[2].plot(mask.cpu().numpy(), color='purple', label='Cumsum')
+        # plt.tight_layout()
+        # plt.show()
         
         return mask
     
