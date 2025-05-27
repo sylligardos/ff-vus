@@ -29,8 +29,8 @@ def load_tsb(testing=False):
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        labels = labels[:5]
-        filenames = filenames[:5]
+        labels = labels[:10]
+        filenames = filenames[:10]
 
     scoreloader = Scoreloader('data/scores')
     detectors = scoreloader.get_detector_names()
@@ -128,8 +128,8 @@ def compute_metric(
                 label, score = torch.tensor(label, device=device), torch.tensor(score, device=device)
                 results[-1]['Slopes'], results[-1]['Existence'] = 'function', 'matrix'
 
-            # (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute(label, score)
-            (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute_wrapper(label, score)
+            (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute(label, score)
+            # (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute_wrapper(label, score)
             results[-1].update(ff_vus_time_analysis)
         else:
             if metric == 'range_auc_pr' or metric == 'vus_pr':

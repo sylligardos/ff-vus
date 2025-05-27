@@ -84,6 +84,8 @@ class VUSTorch():
         """
         
         TODO: Can we skip having to create sm?
+            idx, counts = score.unique(return_counts=True)
+            pred_pos2 = counts.flip(0).cumsum(0)
         """
         # Compute safe mask
         ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates_both(label)
@@ -91,38 +93,23 @@ class VUSTorch():
 
         # Compute False Positives
         (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
-
-
-        # Method 1: Using score mask
-        tracemalloc.start()
-        start_time1 = time.time()
-        sm, chunk_time_sm = self.get_score_mask(score, thresholds)
-        pred_pos1 = sm.sum(axis=1)
-        elapsed_time1 = time.time() - start_time1
-        current1, peak1 = tracemalloc.get_traced_memory()
-        print(f"Method 1 (score mask) pred_pos time: {elapsed_time1:.6f} seconds")
-        print(f"Method 1 (score mask) memory usage: current={current1 / 1024:.2f} KB, peak={peak1 / 1024:.2f} KB")
-        tracemalloc.stop()
-
-        # Method 2: Using unique counts and cumsum
-        tracemalloc.start()
-        start_time2 = time.time()
-        idx, counts = score.unique(return_counts=True)
-        pred_pos2 = counts.flip(0).cumsum(0)
-        elapsed_time2 = time.time() - start_time2
-        current2, peak2 = tracemalloc.get_traced_memory()
-        print(f"Method 2 (unique counts) pred_pos time: {elapsed_time2:.6f} seconds")
-        print(f"Method 2 (unique counts) memory usage: current={current2 / 1024:.2f} KB, peak={peak2 / 1024:.2f} KB")
-        tracemalloc.stop()
-        exit()
         
         # Apply mask
         label_masked = label[safe_mask]
         score_masked = score[safe_mask]
 
         (tp, fp, positives, existence, time_analysis), metric_time = self.compute(label_masked, score_masked, conclude_computation=False, thresholds=thresholds)
-        fp = sm.sum(axis=1) - tp
-
+        
+        # Fast but requires memory
+        # sm, time_sm = self.get_score_mask(score, thresholds)
+        # fp = sm.sum(axis=1) - tp
+        
+        # Slow but memory efficient
+        fp = torch.zeros_like(tp)
+        for i in range(tp.shape[1]):
+            sm_i, time_sm = self.get_score_mask(score, thresholds[i:i+1])
+            fp[:, i] = sm_i.sum(axis=1) - tp[:, i]
+        
         # Finish off computation
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
         vus_pr, time_integral = self.auc(recall, precision)
@@ -283,17 +270,13 @@ class VUSTorch():
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
         than the bigger slope. This allows us to mask the label safely, without changing anything in the implementation.
         """
-        length = torch.tensor(label.shape[0])
+        length = torch.tensor(label.shape[0], device=self.device)
         mask = torch.zeros(length, dtype=torch.int8, device=self.device)
 
         safe_extension = self.slope_size + 1 + int(extra_safe)
         
         start_safe_points = torch.clamp(start_points - safe_extension, min=0)
         end_safe_points = torch.clamp(end_points + safe_extension + 1, max=length - 1)
-
-        # print((start_safe_points == end_safe_points))
-        # print((start_safe_points == end_safe_points).any())
-        # exit()
         
         add_start = torch.ones_like(start_safe_points, dtype=torch.int8, device=self.device)
         add_end = torch.ones_like(end_safe_points, dtype=torch.int8, device=self.device).mul(-1)
@@ -301,16 +284,6 @@ class VUSTorch():
         mask.index_add_(0, start_safe_points, add_start)
         mask.index_add_(0, end_safe_points, add_end)
 
-        # Check if the number of 1s in mask equals the number of start_safe_points
-        # print(f"mask == 1 count: {(mask == 1).sum().item()}, start_safe_points: {start_safe_points.numel()}")
-        # print(f"mask == -1 count: {(mask == -1).sum().item()}, end_safe_points: {end_safe_points.numel()}")
-        
-        # Plot label with start/end points and their safe counterparts, and mask in a subfigure below
-        # print(f"Number of start points: {start_points.numel()}, Number of end points: {end_points.numel()}")
-        # fig, axs = plt.subplots(3, 1, figsize=(12, 4), sharex=True)
-        # axs[0].plot(label.cpu().numpy(), color='red', label='Label')
-        # axs[1].plot(mask.cpu().numpy(), color='purple', label='Mask')
-        
         mask = mask.cumsum(dim=0)
         mask = mask > 0
         if extra_safe:      # TODO: Fix this bro
@@ -318,10 +291,6 @@ class VUSTorch():
         else:
             mask[-1] = label[-1]
 
-        # axs[2].plot(mask.cpu().numpy(), color='purple', label='Cumsum')
-        # plt.tight_layout()
-        # plt.show()
-        
         return mask
     
     @time_it
