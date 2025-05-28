@@ -89,22 +89,23 @@ class VUSNumpy():
         """
         The main computing function of the metric
         """
-        # TODO: Compute FP and then apply safe mask, maybe?
+        # TODO: Remove masking from existence and confusion matrix since its done globally
 
         ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anom_coord = self.get_anomalies_coordinates(label)
-        # safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+        safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=self.apply_mask)
 
         thresholds, time_thresholds = self.get_unique_thresholds(score)
         sm, time_sm = self.get_score_mask(score, thresholds)
 
         # Apply mask
         if self.apply_mask:
-            extra_safe_mask, extra_time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=True)
-            extra_fp = sm[:, ~extra_safe_mask].sum(axis=1)
-            label, score, sm = label[extra_safe_mask], score[extra_safe_mask], sm[:, extra_safe_mask]
+            extra_fp = sm[:, ~safe_mask].sum(axis=1)
+            label, score, sm = label[safe_mask], score[safe_mask], sm[:, safe_mask]
 
-            ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anom_coord = self.get_anomalies_coordinates(label)
-            safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+            ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), extra_time_anom_coord = self.get_anomalies_coordinates(label)
+            safe_mask, extra_time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+            time_anom_coord += extra_time_anom_coord
+            time_safe_mask += extra_time_safe_mask
 
         pos, time_pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges, clip=True)
 
@@ -112,10 +113,9 @@ class VUSNumpy():
         existence, time_existence = self.compute_existence(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
         (fp, fn, tp, positives, negatives, fpr), time_confusion = self.compute_confusion_matrix(labels, sm)
         
-        # Add rest of FPs here, can I get the sm smaller
+        # Add rest of FPs here
         if self.apply_mask:
             fp += extra_fp
-            time_safe_mask += extra_time_safe_mask
 
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
         vus_pr, time_integral = self.auc(recall, precision)
