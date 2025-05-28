@@ -20,10 +20,11 @@ class VUSNumpy():
             self, 
             slope_size=100, 
             step=1, 
-            zita=(1/math.sqrt(2)), 
+            zita=(1/math.sqrt(2)),
+            apply_mask=False, 
             slopes='precomputed',
             existence='optimized',
-            conf_matrix='dynamic', 
+            conf_matrix='dynamic',
             interpolation='stepwise',
             metric='vus_pr'
         ):
@@ -51,6 +52,7 @@ class VUSNumpy():
         self.slope_size = slope_size
         self.step = step
         self.zita = zita
+        self.apply_mask = apply_mask
         
         self.slope_values = np.arange(self.slope_size + 1, step=self.step) if step > 0 else np.array([0])
         self.n_slopes = self.slope_values.shape[0]
@@ -90,16 +92,31 @@ class VUSNumpy():
         # TODO: Compute FP and then apply safe mask, maybe?
 
         ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anom_coord = self.get_anomalies_coordinates(label)
-        safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+        # safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
 
         thresholds, time_thresholds = self.get_unique_thresholds(score)
-        pos, time_pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges, clip=True)
         sm, time_sm = self.get_score_mask(score, thresholds)
+
+        # Apply mask
+        if self.apply_mask:
+            extra_safe_mask, extra_time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=True)
+            extra_fp = sm[:, ~extra_safe_mask].sum(axis=1)
+            label, score, sm = label[extra_safe_mask], score[extra_safe_mask], sm[:, extra_safe_mask]
+
+            ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anom_coord = self.get_anomalies_coordinates(label)
+            safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+
+        pos, time_pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges, clip=True)
 
         labels, time_slopes = self.add_slopes(label, start_no_edges, end_no_edges, pos)
         existence, time_existence = self.compute_existence(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
         (fp, fn, tp, positives, negatives, fpr), time_confusion = self.compute_confusion_matrix(labels, sm)
         
+        # Add rest of FPs here, can I get the sm smaller
+        if self.apply_mask:
+            fp += extra_fp
+            time_safe_mask += extra_time_safe_mask
+
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
         vus_pr, time_integral = self.auc(recall, precision)
 
@@ -127,7 +144,7 @@ class VUSNumpy():
         return np.sort(np.unique(score))[::-1]
     
     @time_it
-    def create_safe_mask(self, label, start_points, end_points):
+    def create_safe_mask(self, label, start_points, end_points, extra_safe=False):
         """
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
         than the bigger slope. This allows us to mask the label safely, without changing anything in the implementation.
@@ -135,16 +152,21 @@ class VUSNumpy():
 
         length = label.shape[0]
         mask = np.zeros(length, dtype=np.int8)
-        
-        start_safe_points = np.maximum(start_points - (self.slope_size + 1), mask[0])
-        end_safe_points = np.minimum(end_points + (self.slope_size + 1) + 1, length - 1)
 
-        mask[start_safe_points] += 1
-        mask[end_safe_points] -= 1
+        safe_extension = self.slope_size + 1 + int(extra_safe)
+        
+        start_safe_points = np.maximum(start_points - safe_extension, 0)
+        end_safe_points = np.minimum(end_points + safe_extension + 1, length - 1)
+
+        np.add.at(mask, start_safe_points, 1)
+        np.add.at(mask, end_safe_points, -1)
 
         mask = np.cumsum(mask)
         mask = mask > 0
-        mask[-1] = label[-1]
+        if extra_safe:      # TODO: Fix this bro
+            mask[-1] = (end_safe_points[-1] == (length - 1))
+        else:
+            mask[-1] = label[-1]
         
         return mask
     

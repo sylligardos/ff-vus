@@ -58,6 +58,7 @@ def evaluate_ffvus_random(testing):
         slope_size=slope_size, 
         step=step, 
         zita=zita, 
+        apply_mask=True,
         slopes=slopes,
         existence=existence,
         conf_matrix=conf_matrix, 
