@@ -12,7 +12,7 @@ from vus.vus_torch import VUSTorch
 from utils.scoreloader import Scoreloader
 from utils.dataloader import Dataloader
 from legacy.sylli_metrics import sylli_get_metrics
-from utils.utils import auc_pr_wrapper, time_it
+from utils.utils import auc_pr_wrapper, time_it, analyze_label
 from legacy.utils.metrics import metricor
 
 import torch
@@ -26,7 +26,7 @@ import numpy as np
 def evaluate_ffvus_random(testing):
     tic = time.time()
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['KDD21'] if testing else dataloader.get_dataset_names()
+    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
@@ -58,7 +58,7 @@ def evaluate_ffvus_random(testing):
         slope_size=slope_size, 
         step=step, 
         zita=zita, 
-        apply_mask=False,
+        global_mask=True,
         slopes=slopes,
         existence=existence,
         conf_matrix=conf_matrix, 
@@ -78,7 +78,8 @@ def evaluate_ffvus_random(testing):
     ff_vus_torch = VUSTorch(
         slope_size=slope_size, 
         step=1,
-        zita=zita, 
+        zita=zita,
+        global_mask=True, 
         conf_matrix=conf_matrix,
         device=device,
     )
@@ -98,10 +99,13 @@ def evaluate_ffvus_random(testing):
         detector = detectors[detector_idx]
         score = curr_scores[:, detector_idx]
 
+        length, n_anomalies, anomalies_avg_length = analyze_label(label)
         curr_result = {
             'Time series': filename,
             'Detector': detector,
-            'Length': label.shape[0],
+            'Length': length,
+            'Number of anomalies': n_anomalies,
+            'Anomalies average length': float(anomalies_avg_length),
         }
 
         # AUC-PR
@@ -151,7 +155,19 @@ def evaluate_ffvus_random(testing):
         })
         curr_result.update(ff_auc_gpu_time_analysis)
 
-        print(f"[{i}] ΔAUC: {abs(auc_pr - ff_auc_pr):.2e} | ΔAUC-GPU: {abs(auc_pr - ff_auc_pr_gpu):.2e} | ΔVUS: {abs(vus_pr - ff_vus_pr):.2e} | ΔVUS-GPU: {abs(vus_pr - ff_vus_pr_gpu):.2e} | AUCx{ff_auc_time / auc_pr_time:.2f} | AUC-GPUx{ff_auc_gpu_time / auc_pr_time:.2f} | VUS/{vus_time / ff_vus_time:.2f} | VUS-GPU/{vus_time / ff_vus_gpu_time:.2f} | Len:{label.shape[0]}")
+        print(
+            f"[{i}] ΔAUC: {abs(auc_pr - ff_auc_pr):.2e} | "
+            f"ΔAUC-GPU: {abs(auc_pr - ff_auc_pr_gpu):.2e} | "
+            f"ΔVUS: {abs(vus_pr - ff_vus_pr):.2e} | "
+            f"ΔVUS-GPU: {abs(vus_pr - ff_vus_pr_gpu):.2e} | "
+            f"AUCx{ff_auc_time / auc_pr_time:.2f} | "
+            f"AUC-GPUx{ff_auc_gpu_time / auc_pr_time:.2f} | "
+            f"VUS/{vus_time / ff_vus_time:.2f} | "
+            f"VUS-GPU/{vus_time / ff_vus_gpu_time:.2f} | "
+            f"Len:{label.shape[0]} | "
+            f"#Anom:{n_anomalies} | "
+            f"Avg len:{anomalies_avg_length:.2f}"
+        )
         
         curr_result.update({
             "AUC-PR - FF-AUC-PR": abs(auc_pr - ff_auc_pr), 

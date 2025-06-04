@@ -12,7 +12,6 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import time
 from tqdm import tqdm
 import psutil
 import tracemalloc
@@ -24,7 +23,7 @@ class VUSTorch():
             slope_size=100, 
             step=1, 
             zita=(1/torch.sqrt(torch.tensor(2))), 
-            apply_mask=False,
+            global_mask=False,
             existence=True,
             conf_matrix='dynamic',
             device=None,
@@ -51,12 +50,16 @@ class VUSTorch():
         if self.device == 'cpu':
             print('You are using the GPU version of VUS on a CPU. If this is intended you can try the lighter numpy version!')
 
-        self.slope_size = slope_size
-        self.step = step
-        self.zita = zita
-        self.existence = existence
+        self.slope_size, self.step, self.zita = slope_size, step, zita 
+        self.existence, self.global_mask = existence, global_mask
         
-        self.slope_values = torch.arange(start=0, end=self.slope_size + 1, step=self.step, device=self.device) if step > 0 else torch.tensor([0])
+        self.slope_values = torch.arange(
+            start=0, 
+            end=self.slope_size + 1, 
+            step=self.step, 
+            device=self.device, 
+            dtype=torch.int16 if self.slope_size < 32000 else torch.int32 
+        ) if step > 0 else torch.tensor([0])
         self.n_slopes = self.slope_values.shape[0]
 
         conf_matrix_args = ['dynamic', 'dynamic_plus']
@@ -80,69 +83,30 @@ class VUSTorch():
             self.max_memory_tokens = available_memory / divider
 
     @time_it
-    def compute_wrapper(self, label, score):
-        """
-        
-        TODO: Can we skip having to create sm?
-            idx, counts = score.unique(return_counts=True)
-            pred_pos2 = counts.flip(0).cumsum(0)
-        """
-        # Compute safe mask
-        ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates_both(label)
-        safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=True)
-
-        # Compute False Positives
-        (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
-        
-        # Apply mask
-        label_masked = label[safe_mask]
-        score_masked = score[safe_mask]
-
-        (tp, fp, positives, existence, time_analysis), metric_time = self.compute(label_masked, score_masked, conclude_computation=False, thresholds=thresholds)
-        
-        # Fast but requires memory
-        # sm, time_sm = self.get_score_mask(score, thresholds)
-        # fp = sm.sum(axis=1) - tp
-        
-        # Slow but memory efficient
-        fp = torch.zeros_like(tp)
-        for i in range(tp.shape[1]):
-            sm_i, time_sm = self.get_score_mask(score, thresholds[i:i+1])
-            fp[:, i] = sm_i.sum(axis=1) - tp[:, i]
-        
-        # Finish off computation
-        (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
-        vus_pr, time_integral = self.auc(recall, precision)
-
-        time_analysis.update({
-            "Precision recall curve time": time_pr_rec,
-            "Integral time": time_integral,
-        })
-
-        return vus_pr, time_analysis
-
-    @time_it
-    def compute(self, label, score, conclude_computation=True, thresholds=None):
+    def compute(self, label, score):
         """
         The main computing function of the metric
         
-        TODO: Try smaller types when possible, e.g. thresholds. Is it worth it?
-        TODO: Computing what you need in the beggining and then applying safe mask to everything makes A LOT OF sense!!
-            We can do it in a wrapper function ! E.g. compute_big
+        TODO: Fix MITDB big diff, especially 1st and 10th time series, the big error comes from existence
         """
-
-        # Initialization
         self.update_max_memory_tokens()
-        time_analysis = {}
+        label = label.to(torch.uint8)
+        score = score.to(torch.float16)
 
-        ((_, _), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates_both(label)
-        safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+        ((_), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates(label)
+        safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=self.global_mask)
         
-        if thresholds is None:
-            (thresholds, _), time_thresholds = self.get_unique_thresholds(score) 
-        else:
-            time_thresholds = 0
+        (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
 
+        # Apply global mask
+        if self.global_mask:
+            sm, extra_time_sm = self.get_score_mask(score[~safe_mask], thresholds)
+            extra_fp = sm.sum(axis=1)
+            label, score = label[safe_mask], score[safe_mask]
+
+            ((_), (start_with_edges, end_with_edges)), extra_time_anom_coord = self.get_anomalies_coordinates(label)
+            safe_mask, extra_time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+        
         # Number of chunks required to fit into memory
         sloped_label_mem_size = self.n_slopes * len(label) * 4
         n_splits = np.ceil(sloped_label_mem_size / self.max_memory_tokens).astype(int)
@@ -152,21 +116,17 @@ class VUSTorch():
         fp = tp = positives = anomalies_found = total_anomalies = time_sm = time_slopes = time_existence = time_confusion = time_pos = 0
 
         # Computation in chunks
-        prev_split = 0
         for curr_split in tqdm(split_points, desc='In distance from anomaly', disable=False if n_splits > 10 else True):
-            label_c = label[prev_split:curr_split]
-            score_c = score[prev_split:curr_split]
-            safe_mask_c = safe_mask[prev_split:curr_split]
-            prev_split = curr_split
-
+            label_c, label = label[:curr_split], label[curr_split:]
+            score_c, score = score[:curr_split], score[curr_split:]
+            safe_mask_c, safe_mask = safe_mask[:curr_split], safe_mask[curr_split:]
+            
             # Preprocessing
             pos, chunk_time_pos = self.distance_from_anomaly(label_c, start_with_edges, end_with_edges)
             sm, chunk_time_sm = self.get_score_mask(score_c, thresholds)
 
             # Main computation
             labels_c, chunk_time_slope = self.add_slopes(label_c, pos)
-            # sns.lineplot(labels_c.T)
-            # plt.show()
             (anomalies_found_c, total_anomalies_c), chunk_time_existence = self.compute_existence(labels_c, sm, safe_mask_c, normalize=False)
             (fp_c, fn_c, tp_c, positives_c, neg_c, fpr_c), chunk_time_conf = self.compute_confusion_matrix(labels_c, sm)
 
@@ -178,8 +138,21 @@ class VUSTorch():
 
         # Combine existence of all chunks
         existence = anomalies_found / total_anomalies if self.existence else torch.ones((self.n_slopes, thresholds.shape[0]), device=self.device)
+        print("out", existence.shape)
+        print(existence)
+        exit()
 
-        time_analysis.update({
+        if self.global_mask:
+            fp += extra_fp
+            time_anomalies_coord += extra_time_anom_coord
+            time_safe_mask += extra_time_safe_mask
+            time_sm += extra_time_sm
+
+        # After chunking
+        (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
+        vus_pr, time_integral = self.auc(recall, precision)
+
+        time_analysis = {
             "Anomalies coordinates time": time_anomalies_coord,
             "Safe mask time": time_safe_mask,
             "Thresholds time": time_thresholds,
@@ -188,21 +161,11 @@ class VUSTorch():
             "Slopes time": time_slopes,
             "Existence time": time_existence,
             "Confusion matrix time": time_confusion,
-        })
+            "Precision recall curve time": time_pr_rec,
+            "Integral time": time_integral,
+        }
 
-        # After chunking
-        if not conclude_computation:
-            return tp, fp, positives, existence, time_analysis
-        else:
-            (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
-            vus_pr, time_integral = self.auc(recall, precision)
-
-            time_analysis.update({
-                "Precision recall curve time": time_pr_rec,
-                "Integral time": time_integral,
-            })
-
-            return vus_pr, time_analysis
+        return vus_pr, time_analysis
 
     def find_safe_splits(self, label, safe_mask, n_splits):
         """
@@ -241,7 +204,7 @@ class VUSTorch():
         return torch.sort(torch.unique(score), descending=True)
     
     @time_it
-    def get_anomalies_coordinates_both(self, label: torch.Tensor):
+    def get_anomalies_coordinates(self, label: torch.Tensor):
         """
         Return the starting and ending points of all anomalies in label,
         both with and without edge inclusion.
@@ -286,10 +249,7 @@ class VUSTorch():
 
         mask = mask.cumsum(dim=0)
         mask = mask > 0
-        if extra_safe:      # TODO: Fix this bro
-            mask[-1] = (end_safe_points[-1] == (length - 1))
-        else:
-            mask[-1] = label[-1]
+        mask[-1] = (end_safe_points[-1] == (length - 1)) if extra_safe else label[-1] # Why does it work?
 
         return mask
     
@@ -375,7 +335,7 @@ class VUSTorch():
         device = labels.device
 
         # Compute mask for relevant points
-        if safe_mask is not None:
+        if safe_mask is not None and not self.global_mask:
             labels = labels[:, safe_mask]
             score_mask = score_mask[:, safe_mask]
         
@@ -417,6 +377,8 @@ class VUSTorch():
             n_anomalies_not_found = torch.sum(cm_diff_norm, dim=2) + final_anomalies_missed
             n_anomalies_found = total_anomalies - n_anomalies_not_found
 
+        print("out", (n_anomalies_found / total_anomalies).shape)
+        print((n_anomalies_found / total_anomalies))
         if normalize:
             return n_anomalies_found / total_anomalies
         else:
@@ -450,16 +412,15 @@ class VUSTorch():
             true_positives: Tensor [S]
             positives: Tensor [S]
         """
-        mask = torch.where(labels[-1] > 0)[0]
+        if not self.global_mask:
+            mask = torch.where(labels[-1] > 0)[0]
+            labels = labels[:, mask]
+            sm = sm[:, mask]
         
-        masked_labels = labels[:, mask]
-        masked_sm = sm[:, mask]
-        masked_sm_inv = ~masked_sm
-        
-        true_positives = torch.matmul(masked_labels, masked_sm.float().T)
-        false_negatives = torch.matmul(masked_labels[0], masked_sm_inv.float().T)[None, :]
+        true_positives = torch.matmul(labels, sm.float().T)
+        false_negatives = torch.matmul(labels[0], ~sm.float().T)[None, :]
 
-        positives = ((true_positives + false_negatives) + masked_labels[0].sum()).div(2.0)
+        positives = ((true_positives + false_negatives) + labels[0].sum()).div(2.0)
 
         return false_negatives, true_positives, positives
 
@@ -476,18 +437,16 @@ class VUSTorch():
             true_positives: Tensor [S]
             positives: Tensor [S]
         """
-        label = labels[0]
-        sm_inv = ~sm
-
-        slope_mask = torch.where(torch.logical_and(labels[-1] > 0, labels[-1] < 1))[0]
-        label_as_mask = torch.where(label)[0]
+        if not self.global_mask:
+            slope_mask = torch.where(torch.logical_and(labels[-1] > 0, labels[-1] < 1))[0]
+        else:
+            slope_mask = torch.where(labels[-1] < 1)[0]
+        label_as_mask = torch.where(labels[0])[0]
 
         initial_tps = sm[:, label_as_mask].sum(dim=1)
         slope_tps = torch.matmul(labels[:, slope_mask], sm[:, slope_mask].float().T)
         true_positives = initial_tps + slope_tps
-
-        false_negatives = sm_inv[:, label_as_mask].sum(dim=1)
-
+        false_negatives = (~sm)[:, label_as_mask].sum(dim=1)
         positives = ((true_positives + false_negatives) + label_as_mask.size(0)).div(2)
 
         return false_negatives, true_positives, positives

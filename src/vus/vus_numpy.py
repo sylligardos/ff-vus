@@ -12,7 +12,6 @@ import math
 from skimage.util.shape import view_as_windows as viewW
 import matplotlib.pyplot as plt
 import seaborn as sns
-import time
 
 
 class VUSNumpy():
@@ -21,7 +20,7 @@ class VUSNumpy():
             slope_size=100, 
             step=1, 
             zita=(1/math.sqrt(2)),
-            apply_mask=False, 
+            global_mask=False, 
             slopes='precomputed',
             existence='optimized',
             conf_matrix='dynamic',
@@ -29,16 +28,18 @@ class VUSNumpy():
             metric='vus_pr'
         ):
         """
-        Initialize the VUS metric.
+        Initialize the VUSNumpy metric class.
 
         Args:
-            slope_size (int): Size of the slope range used for encoding labeled anomalies.
-            step (int): Step between slope values; must divide slope_size evenly.
-            zita (float): Tolerance parameter, between 0 and 1.
-            slopes (str): Strategy for computing slope information: 'precomputed' or 'function'.
-            existence (str): Strategy for computing existence: 'None', 'trivial', 'optimized', 'matrix'.
-            conf_matrix (str): Strategy for computing the confusion matrix: 'trivial', 'dynamic', 'dynamic_plus'.
-            interpolation (str): Interpolation strategy for PR curve: 'linear' or 'stepwise'.
+            slope_size (int): Number of slope values for anomaly encoding.
+            step (int): Increment between slope values; must evenly divide slope_size.
+            zita (float): Slope parameter, must be in [0, 1].
+            global_mask (bool): Whether to apply a global mask to the data.
+            slopes (str): Slope computation mode, either 'precomputed' or 'function'.
+            existence (str): Existence calculation mode: 'None', 'trivial', 'optimized', or 'matrix'.
+            conf_matrix (str): Confusion matrix calculation mode: 'trivial', 'dynamic', or 'dynamic_plus'.
+            interpolation (str): Interpolation method for PR curve: 'linear' or 'stepwise'.
+            metric (str): Metric to compute: 'auc_pr', 'auc_roc', 'vus_pr', 'vus_roc', or 'all'.
         """
         if slope_size < 0 or step < 0:
             raise ValueError(f"Error with the slope_size {slope_size} or step {step}. They should be positive values.")
@@ -49,10 +50,8 @@ class VUSNumpy():
         if zita < 0 and zita > 1:
             raise ValueError(f"Error with the zita: {zita}. It should be a value between 0 and 1.")
         
-        self.slope_size = slope_size
-        self.step = step
-        self.zita = zita
-        self.apply_mask = apply_mask
+        self.slope_size, self.step = slope_size, step
+        self.zita, self.global_mask = zita, global_mask
         
         self.slope_values = np.arange(self.slope_size + 1, step=self.step) if step > 0 else np.array([0])
         self.n_slopes = self.slope_values.shape[0]
@@ -65,57 +64,70 @@ class VUSNumpy():
         metric_args = ['auc_pr', 'auc_roc', 'vus_pr', 'vus_roc', 'all']
 
         # Validate and set modes
-        self.add_slopes_mode = self._validate_arg(slopes, slopes_args, 'slopes')
-        self.existence_mode = self._validate_arg(existence, existence_args, 'existence')
-        self.conf_matrix_mode = self._validate_arg(conf_matrix, conf_matrix_args, 'conf_matrix')
-        self.interpolation_mode = self._validate_arg(interpolation, interpolation_args, 'interpolation')
-        self.metric_mode = self._validate_arg(metric, metric_args, 'metric')
+        self.add_slopes_mode = self.validate_args(slopes, slopes_args)
+        self.existence_mode = self.validate_args(existence, existence_args)
+        self.conf_matrix_mode = self.validate_args(conf_matrix, conf_matrix_args)
+        self.interpolation_mode = self.validate_args(interpolation, interpolation_args)
+        self.metric_mode = self.validate_args(metric, metric_args)
 
-        if slopes == 'precomputed':
-            if slope_size > 0:
-                self.pos_slopes = self._precompute_slopes()
+        # Precompute slopes
+        self.prepare_procomputed_slopes()
+
+
+    def validate_args(self, value, valid_options):
+        if value not in valid_options:
+            raise ValueError(f"Unknown argument {value}. Must be one of {valid_options}.")
+        return value
+    
+    def prepare_procomputed_slopes(self):
+        if self.add_slopes_mode:
+            if self.slope_size > 0:
+                self.pos_slopes = self.precompute_slopes()
                 self.neg_slopes = self.pos_slopes[:, ::-1]
             else:
-                self.pos_slopes = np.array([])
-                self.neg_slopes = np.array([])
-
-    def _validate_arg(self, value, valid_options, name):
-        if value not in valid_options:
-            raise ValueError(f"Unknown argument for `{name}`: {value}. Must be one of {valid_options}.")
-        return value
+                self.pos_slopes, self.neg_slopes = np.array([]), np.array([])
 
     @time_it
     def compute(self, label, score):
         """
-        The main computing function of the metric
-        """
-        # TODO: Remove masking from existence and confusion matrix since its done globally
+        Main computation function for the VUS metric.
 
+        Args:
+            label (np.ndarray): Binary ground truth vector.
+            score (np.ndarray): Prediction scores.
+
+        Returns:
+            vus_pr (float): Computed VUS-PR metric.
+            time_analysis (dict): Timing breakdown for each computation step.
+        """
         ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), time_anom_coord = self.get_anomalies_coordinates(label)
-        safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=self.apply_mask)
+        safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=self.global_mask)
 
         thresholds, time_thresholds = self.get_unique_thresholds(score)
-        sm, time_sm = self.get_score_mask(score, thresholds)
 
-        # Apply mask
-        if self.apply_mask:
-            extra_fp = sm[:, ~safe_mask].sum(axis=1)
-            label, score, sm = label[safe_mask], score[safe_mask], sm[:, safe_mask]
+        # Apply global mask
+        if self.global_mask:
+            sm, extra_time_sm = self.get_score_mask(score[~safe_mask], thresholds)
+            extra_fp = sm.sum(axis=1)
+            label, score = label[safe_mask], score[safe_mask]
 
             ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), extra_time_anom_coord = self.get_anomalies_coordinates(label)
             safe_mask, extra_time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
-            time_anom_coord += extra_time_anom_coord
-            time_safe_mask += extra_time_safe_mask
-
+            
         pos, time_pos = self.distance_from_anomaly(label, start_with_edges, end_with_edges, clip=True)
+        sm, time_sm = self.get_score_mask(score, thresholds)
 
         labels, time_slopes = self.add_slopes(label, start_no_edges, end_no_edges, pos)
         existence, time_existence = self.compute_existence(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
+        print(existence)
         (fp, fn, tp, positives, negatives, fpr), time_confusion = self.compute_confusion_matrix(labels, sm)
         
-        # Add rest of FPs here
-        if self.apply_mask:
+        # Add rest of FPs
+        if self.global_mask:
             fp += extra_fp
+            time_anom_coord += extra_time_anom_coord
+            time_safe_mask += extra_time_safe_mask
+            time_sm += extra_time_sm
 
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
         vus_pr, time_integral = self.auc(recall, precision)
@@ -149,7 +161,6 @@ class VUSNumpy():
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
         than the bigger slope. This allows us to mask the label safely, without changing anything in the implementation.
         """
-
         length = label.shape[0]
         mask = np.zeros(length, dtype=np.int8)
 
@@ -163,10 +174,8 @@ class VUSNumpy():
 
         mask = np.cumsum(mask)
         mask = mask > 0
-        if extra_safe:      # TODO: Fix this bro
-            mask[-1] = (end_safe_points[-1] == (length - 1))
-        else:
-            mask[-1] = label[-1]
+        # TODO: Why does it work?
+        mask[-1] = (end_safe_points[-1] == (length - 1)) if extra_safe else label[-1]
         
         return mask
     
@@ -186,7 +195,7 @@ class VUSNumpy():
         mask = col_indices < (row_indices * k)
         return ~mask
     
-    def _precompute_slopes(self):
+    def precompute_slopes(self):
         '''
         Create all the required slopes at once.
         step should be an exact divider of l.
@@ -430,8 +439,9 @@ class VUSNumpy():
         on an even step.
         """
         # Compute mask for relevant points
-        labels = labels[:, safe_mask]
-        score_mask = score_mask[:, safe_mask]
+        if not self.global_mask:
+            labels = labels[:, safe_mask]
+            score_mask = score_mask[:, safe_mask]
 
         # Normalize labels to 0 or 1
         norm_labels = (labels > 0).astype(np.int8)
@@ -502,31 +512,28 @@ class VUSNumpy():
         return false_negatives, true_positives, positives
     
     def conf_matrix_dyn(self, labels, sm):
-        mask = np.where(labels[-1] > 0)[0]
-        masked_labels = labels[:, mask]
-        masked_sm = sm[:, mask]
-        masked_sm_inv = ~masked_sm
+        if not self.global_mask:
+            mask = np.where(labels[-1] > 0)[0]
+            labels = labels[:, mask]
+            sm = sm[:, mask]
 
-        true_positives = np.matmul(masked_labels, masked_sm.T)
-        false_negatives = np.matmul(masked_labels[0], masked_sm_inv.T)[None, :]
-
-        positives = ((true_positives + false_negatives) + masked_labels[0].sum()) / 2
+        true_positives = np.matmul(labels, sm.T)
+        false_negatives = np.matmul(labels[0], ~sm.T)[None, :]
+        positives = ((true_positives + false_negatives) + labels[0].sum()) / 2
 
         return false_negatives, true_positives, positives
     
     def conf_matrix_dyn_plus(self, labels, sm):
-        label = labels[0]
-        sm_inv = ~sm
-        
-        slope_mask = np.where(np.logical_and(labels[-1] > 0, labels[-1] < 1))[0]
-        label_as_mask = np.where(label)[0]
+        if not self.global_mask:
+            slope_mask = np.where(np.logical_and(labels[-1] > 0, labels[-1] < 1))[0]
+        else:
+            slope_mask = np.where(labels[-1] < 1)[0]
+        label_as_mask = np.where(labels[0])[0]
         
         initial_tps = sm[:, label_as_mask].sum(axis=1)
         slope_tps = np.matmul(labels[:, slope_mask], sm[:, slope_mask].T)
         true_positives = initial_tps + slope_tps
-
-        false_negatives = sm_inv[:, label_as_mask].sum(axis=1)
-
+        false_negatives = (~sm)[:, label_as_mask].sum(axis=1)
         positives = ((true_positives + false_negatives) + label_as_mask.shape[0]) / 2
 
         return false_negatives, true_positives, positives
