@@ -119,7 +119,7 @@ class VUSNumpy():
 
         labels, time_slopes = self.add_slopes(label, start_no_edges, end_no_edges, pos)
         existence, time_existence = self.compute_existence(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
-        print(existence)
+        # print(existence)
         (fp, fn, tp, positives, negatives, fpr), time_confusion = self.compute_confusion_matrix(labels, sm)
         
         # Add rest of FPs
@@ -424,6 +424,10 @@ class VUSNumpy():
                 curr_existence[overlap_index:] = np.logical_and(curr_existence[overlap_index:], np.logical_not(prev_existence[overlap_index:]))
             existence += curr_existence
             prev_existence = np.logical_or(tmp_existence, curr_existence)
+
+        print(existence)
+        print(n_anomalies)
+        print('----')
 
         return existence / n_anomalies[:, None]
 

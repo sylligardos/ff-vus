@@ -30,8 +30,8 @@ def evaluate_ffvus_random(testing):
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        labels = labels[:10]
-        filenames = filenames[:10]
+        labels = labels[5:6]
+        filenames = filenames[5:6]
     else:
         zipped = list(zip(labels, filenames))
         sampled = np.random.choice(len(zipped), size=50, replace=False)
@@ -58,7 +58,7 @@ def evaluate_ffvus_random(testing):
         slope_size=slope_size, 
         step=step, 
         zita=zita, 
-        global_mask=True,
+        global_mask=False,
         slopes=slopes,
         existence=existence,
         conf_matrix=conf_matrix, 
@@ -79,7 +79,7 @@ def evaluate_ffvus_random(testing):
         slope_size=slope_size, 
         step=1,
         zita=zita,
-        global_mask=True, 
+        global_mask=False, 
         conf_matrix=conf_matrix,
         device=device,
     )
