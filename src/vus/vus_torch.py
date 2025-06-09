@@ -15,6 +15,7 @@ import seaborn as sns
 from tqdm import tqdm
 import psutil
 import tracemalloc
+import time
 
 
 class VUSTorch():
@@ -87,10 +88,7 @@ class VUSTorch():
         """
         The main computing function of the metric
         
-        TODO: Fix MITDB diff, 5th time series, the big error comes from existence
-            The last slope has more anomalies that slope 0 which is impossible
-            The last slope ends up having 5 time more anomalies that what it should
-            What about the anomalies we find
+        TODO: There is still some error on MITDB two first time series, CPU version too
         """
         self.update_max_memory_tokens()
         # label = label.to(torch.uint8)
@@ -119,16 +117,15 @@ class VUSTorch():
         fp = tp = positives = anomalies_found = total_anomalies = time_sm = time_slopes = time_existence = time_confusion = time_pos = 0
 
         # Computation in chunks
+        prev_split = 0
         for curr_split in tqdm(split_points, desc='In distance from anomaly', disable=False if n_splits > 10 else True):
-            label_c = label[:curr_split]
-            label = label[curr_split:]
-            score_c = score[:curr_split]
-            score = score[curr_split:]
-            safe_mask_c = safe_mask[:curr_split]
-            safe_mask = safe_mask[curr_split:]
+            label_c = label[prev_split:curr_split]
+            score_c = score[prev_split:curr_split]
+            safe_mask_c = safe_mask[prev_split:curr_split]
             
             # Preprocessing
-            pos, chunk_time_pos = self.distance_from_anomaly(label_c, start_with_edges, end_with_edges)
+            ((_), (start_with_edges_c, end_with_edges_c)), extra_time_anom_coord = self.get_anomalies_coordinates(label_c)
+            pos, chunk_time_pos = self.distance_from_anomaly(label_c, start_with_edges_c, end_with_edges_c)
             sm, chunk_time_sm = self.get_score_mask(score_c, thresholds)
 
             # Main computation
@@ -148,11 +145,11 @@ class VUSTorch():
             time_existence += chunk_time_existence
             time_confusion += chunk_time_conf
 
-        # Combine existence of all chunks
-        print(total_anomalies.T)
-        exit()
-        existence = anomalies_found / total_anomalies if self.existence else torch.ones((self.n_slopes, thresholds.shape[0]), device=self.device)
+            prev_split = curr_split
 
+        # Combine existence of all chunks
+        existence = anomalies_found / total_anomalies if self.existence else torch.ones((self.n_slopes, thresholds.shape[0]), device=self.device)
+        
         if self.global_mask:
             fp += extra_fp
             time_anomalies_coord += extra_time_anom_coord
@@ -360,8 +357,6 @@ class VUSTorch():
             (n_anomalies_found_0, total_anomalies_0), _ = self.compute_existence(labels[0:1], score_mask, normalize=False, allow_recursion=False)
             (n_anomalies_found_s, total_anomalies_s), _ = self.compute_existence(labels[-1:], score_mask, normalize=False, allow_recursion=False)
             
-            print(f'In: anom. slope 0 {total_anomalies_0}, anom. slope s {total_anomalies_s}')
-            # exit()
             interp_weights = torch.linspace(0, 1, steps=s, device=device).view(1, -1)
             n_anomalies_found = n_anomalies_found_0 + (n_anomalies_found_s - n_anomalies_found_0) * interp_weights.T
             total_anomalies = total_anomalies_0 + (total_anomalies_s - total_anomalies_0) * interp_weights.T
@@ -430,7 +425,7 @@ class VUSTorch():
             sm = sm[:, mask]
         
         true_positives = torch.matmul(labels, sm.float().T)
-        false_negatives = torch.matmul(labels[0], ~sm.float().T)[None, :]
+        false_negatives = torch.matmul(labels[0], (~sm).float().T)[None, :]
 
         positives = ((true_positives + false_negatives) + labels[0].sum()).div(2.0)
 

@@ -25,7 +25,7 @@ import torch
 def load_tsb(testing=False):
     # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['YAHOO'] if testing else dataloader.get_dataset_names()
+    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
@@ -78,7 +78,8 @@ def compute_metric(
         filenames,
         labels, 
         scores, 
-        metric, 
+        metric,
+        global_mask=True, 
         slope_size=None, 
         step=None, 
         slopes=None, 
@@ -91,6 +92,7 @@ def compute_metric(
     
     if metric == 'ff_vus_pr':
         ff_vus = VUSNumpy(
+            global_mask=global_mask,
             slope_size=slope_size, 
             step=step,  
             slopes=slopes,
@@ -100,6 +102,7 @@ def compute_metric(
     elif metric == 'ff_vus_pr_gpu':
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         ff_vus = VUSTorch(
+            global_mask=global_mask,
             slope_size=slope_size, 
             step=step,
             conf_matrix=conf_matrix,
@@ -150,6 +153,7 @@ def compute_metric(
 def compute_metric_over_dataset(
         dataset,
         metric,
+        global_mask=True,
         slope_size=100,
         step=1,
         slopes='precomputed',
@@ -171,7 +175,7 @@ def compute_metric_over_dataset(
         metrics = [metric]
 
     for metric in metrics:
-        df = compute_metric(filenames, labels, scores, metric, slope_size, step, slopes, existence, conf_matrix)
+        df = compute_metric(filenames, labels, scores, metric, global_mask, slope_size, step, slopes, existence, conf_matrix)
 
         # Generate saving path and results file name
         filename = f"{dataset}_{metric.replace('_', '-').upper()}"
@@ -218,6 +222,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, required=True, help='Path or name of the dataset')
     parser.add_argument('--metric', type=str, required=True, choices=['ff_vus_pr', 'ff_vus_pr_gpu', 'vus_pr', 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'all'], 
                         help='Metric to compute (e.g., VUS, AUC-PR, etc.)')
+    parser.add_argument('--global_mask', action='store_true', help='Use global mask for metric computation')
     parser.add_argument('--slope_size', type=int, default=100, help='Number of slopes used for computation')
     parser.add_argument('--step', type=int, default=1, help='Step size between slopes')
     parser.add_argument('--slopes', type=str, choices=['precomputed', 'function'], default='precomputed',
@@ -241,6 +246,7 @@ if __name__ == "__main__":
         compute_metric_over_dataset(
             dataset=dataset,
             metric=args.metric,
+            global_mask=args.global_mask,
             slope_size=args.slope_size,
             step=args.step,
             slopes=args.slopes,

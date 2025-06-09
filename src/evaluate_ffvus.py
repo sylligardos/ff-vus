@@ -30,8 +30,8 @@ def evaluate_ffvus_random(testing):
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        labels = labels[5:6]
-        filenames = filenames[5:6]
+        labels = labels[:10]
+        filenames = filenames[:10]
     else:
         zipped = list(zip(labels, filenames))
         sampled = np.random.choice(len(zipped), size=50, replace=False)
@@ -48,6 +48,7 @@ def evaluate_ffvus_random(testing):
     slope_size = 100 if testing else np.random.randint(low=1, high=256)
     step = 1
     zita = (1 / math.sqrt(2))
+    global_mask = False if testing else np.random.choice([True, False])
     slopes = 'precomputed' if testing else np.random.choice(['precomputed', 'function'])
     existence = 'optimized' if testing else np.random.choice(['optimized'])   # 'trivial', 'matrix' are also options
     conf_matrix = 'dynamic_plus' if testing else np.random.choice(['trivial', 'dynamic', 'dynamic_plus'])          
@@ -58,7 +59,7 @@ def evaluate_ffvus_random(testing):
         slope_size=slope_size, 
         step=step, 
         zita=zita, 
-        global_mask=False,
+        global_mask=global_mask,
         slopes=slopes,
         existence=existence,
         conf_matrix=conf_matrix, 
@@ -79,7 +80,7 @@ def evaluate_ffvus_random(testing):
         slope_size=slope_size, 
         step=1,
         zita=zita,
-        global_mask=False, 
+        global_mask=global_mask, 
         conf_matrix=conf_matrix,
         device=device,
     )
