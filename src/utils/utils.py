@@ -5,13 +5,15 @@
 @what: FF-VUS
 """
 
-from sklearn import metrics
+import os
+import re
 import time
 import functools
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-import re
+from sklearn import metrics
+from tqdm import tqdm
 
 from .scoreloader import Scoreloader
 from .dataloader import Dataloader

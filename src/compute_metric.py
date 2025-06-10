@@ -71,11 +71,12 @@ def compute_metric(
                 'Confusion matrix': conf_matrix,
             })
 
-            if metric == 'ff_vus_pr_gpu':
-                label, score = torch.tensor(label, device=device), torch.tensor(score, device=device)
-                results[-1]['Slopes'], results[-1]['Existence'] = 'function', 'matrix'
+            with torch.no_grad():
+                if metric == 'ff_vus_pr_gpu':
+                    label, score = torch.tensor(label, device=device, dtype=torch.uint8), torch.tensor(score, device=device, dtype=torch.float16)
+                    results[-1]['Slopes'], results[-1]['Existence'] = 'function', 'matrix'
 
-            (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute(label, score)
+                (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute(label, score)
             results[-1].update(ff_vus_time_analysis)
         else:
             if metric == 'range_auc_pr' or metric == 'vus_pr':
@@ -106,7 +107,7 @@ def compute_metric_over_dataset(
 ):
     # Load dataset
     if dataset == 'tsb':
-        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='KDD21', n_timeseries=10)
+        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='MITDB', n_timeseries=10)
     elif 'synthetic' in  dataset:
         filenames, labels, scores = load_synthetic(dataset=dataset, testing=testing)
     else:

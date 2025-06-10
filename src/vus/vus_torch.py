@@ -91,27 +91,39 @@ class VUSTorch():
         TODO: There is still some error on MITDB two first time series, CPU version too
         """
         self.update_max_memory_tokens()
-        # label = label.to(torch.uint8)
+        # label = label.to(torch.uint8) TODO: Is this correct?
         # score = score.to(torch.float16)
-
+        print(">> Start")
         ((_), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates(label)
+        print(">> Got anomalies coordinates")
+        torch.cuda.empty_cache()
         safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=self.global_mask)
-        
+        print(">> Computed safe mask")
+
         (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
+        print(">> Computed thresholds")
 
         # Apply global mask
         if self.global_mask:
-            sm, extra_time_sm = self.get_score_mask(score[~safe_mask], thresholds)
-            extra_fp = sm.sum(axis=1)
-            label, score = label[safe_mask], score[safe_mask]
+            chunks = self.process_in_chunks(score[~safe_mask])
+            extra_fp = torch.zeros((thresholds.shape[0]), device=self.device)
 
+            print(">> Before chunking")
+            for chunk in tqdm(chunks, desc='Computing extra FPs', disable=(len(chunks) <= 10)):
+                sm, extra_time_sm = self.get_score_mask(chunk, thresholds)
+                extra_fp += sm.sum(axis=1)
+
+            print(">> Compute extra fp")
+            label, score = label[safe_mask], score[safe_mask]
             ((_), (start_with_edges, end_with_edges)), extra_time_anom_coord = self.get_anomalies_coordinates(label)
             safe_mask, extra_time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
-        
+        print(">> Applied global mask")
+
         # Number of chunks required to fit into memory
         sloped_label_mem_size = self.n_slopes * len(label) * 4
         n_splits = np.ceil(sloped_label_mem_size / self.max_memory_tokens).astype(int)
         split_points = self.find_safe_splits(label, safe_mask, n_splits)
+        print(">> Found safe splits")
 
         # Total values holders
         fp = tp = positives = anomalies_found = total_anomalies = time_sm = time_slopes = time_existence = time_confusion = time_pos = 0
@@ -174,6 +186,17 @@ class VUSTorch():
         }
 
         return vus_pr, time_analysis
+
+    def process_in_chunks(self, data):
+        data_mem_size = data.nbytes * 100  # Around 100 thresholds 
+        n_splits = int(np.ceil(data_mem_size / self.max_memory_tokens))
+        chunk_size = len(data) // n_splits
+
+        for i in range(n_splits):
+            start = i * chunk_size
+            end = len(data) if i == n_splits - 1 else (i + 1) * chunk_size
+            chunk = data[start:end]
+            yield chunk
 
     def find_safe_splits(self, label, safe_mask, n_splits):
         """
