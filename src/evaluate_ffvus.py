@@ -26,7 +26,7 @@ import numpy as np
 def evaluate_ffvus_random(testing):
     tic = time.time()
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
+    datasets = ['KDD21'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
@@ -48,7 +48,7 @@ def evaluate_ffvus_random(testing):
     slope_size = 100 if testing else np.random.randint(low=1, high=256)
     step = 1
     zita = (1 / math.sqrt(2))
-    global_mask = False if testing else np.random.choice([True, False])
+    global_mask = True if testing else np.random.choice([True, False])
     slopes = 'precomputed' if testing else np.random.choice(['precomputed', 'function'])
     existence = 'optimized' if testing else np.random.choice(['optimized'])   # 'trivial', 'matrix' are also options
     conf_matrix = 'dynamic_plus' if testing else np.random.choice(['trivial', 'dynamic', 'dynamic_plus'])          
@@ -70,6 +70,7 @@ def evaluate_ffvus_random(testing):
         slope_size=0, 
         step=1,
         zita=zita, 
+        global_mask=global_mask,        
         slopes=slopes,
         existence='None',
         conf_matrix=conf_matrix,
@@ -88,7 +89,8 @@ def evaluate_ffvus_random(testing):
     ff_auc_torch = VUSTorch(
         slope_size=0, 
         step=1,
-        zita=zita, 
+        zita=zita,
+        global_mask=global_mask, 
         existence=False,
         conf_matrix=conf_matrix,
         device=device,

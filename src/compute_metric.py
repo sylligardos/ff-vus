@@ -5,15 +5,6 @@
 @what: FF-VUS
 """
 
-
-from vus.vus_numpy import VUSNumpy
-from vus.vus_torch import VUSTorch
-
-from utils.scoreloader import Scoreloader
-from utils.dataloader import Dataloader
-from legacy.sylli_metrics import sylli_get_metrics
-from utils.utils import analyze_label, natural_keys
-
 import argparse
 import pandas as pd
 from tqdm import tqdm
@@ -21,58 +12,11 @@ import os
 import numpy as np
 import torch
 
+from vus.vus_numpy import VUSNumpy
+from vus.vus_torch import VUSTorch
+from legacy.sylli_metrics import sylli_get_metrics
+from utils.utils import analyze_label, natural_keys, load_synthetic, load_tsb
 
-def load_tsb(testing=False):
-    # Load the TSB-UAD benchmark
-    dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['MITDB'] if testing else dataloader.get_dataset_names()
-    _, labels, filenames = dataloader.load_raw_datasets(datasets)
-    
-    if testing:
-        labels = labels[:10]
-        filenames = filenames[:10]
-
-    scoreloader = Scoreloader('data/scores')
-    detectors = scoreloader.get_detector_names()
-    scores, idx_failed = scoreloader.load_parallel(filenames)
-    labels, filenames = scoreloader.clean_failed_idx(labels, idx_failed), scoreloader.clean_failed_idx(filenames, idx_failed)
-    if len(scores) != len(labels) or len(scores) != len(filenames):
-        raise ValueError(f'Size of scores and labels is not the same, scores: {len(scores)}, labels: {len(labels)}, filenames: {len(filenames)}')
-
-    # Pick a random detector score for each label
-    if testing:
-        detectors_idx = np.zeros(len(labels)).astype(int)
-    else:    
-        detectors_idx = np.random.randint(0, len(detectors), size=len(labels))
-    scores = [score[:, idx] for score, idx in zip(scores, detectors_idx)]
-
-    detectors_selected = [detectors[idx] for idx in detectors_idx]
-
-    return filenames, labels, scores, detectors_selected
-
-def load_synthetic(dataset, testing=False):
-    # Load dataset
-    dataset_path = os.path.join('data', 'synthetic', dataset)
-    csv_files = [x for x in os.listdir(dataset_path) if '.csv' in x or '.npy' in x]
-
-    labels = []
-    scores = []
-
-    for file in tqdm(csv_files, desc="Loading synthetic"):
-        if '.csv' in file:
-            data = np.loadtxt(os.path.join(dataset_path, file), delimiter=",")
-        else:
-            data = np.load(os.path.join(dataset_path, file))
-        label = data[:, 0]
-        score = data[:, 1]
-        labels.append(label)
-        scores.append(score)
-        if testing: break
-
-    labels = np.array(labels)
-    scores = np.array(scores).round(2)
-
-    return csv_files, labels, scores
 
 def compute_metric(
         filenames,
@@ -132,7 +76,6 @@ def compute_metric(
                 results[-1]['Slopes'], results[-1]['Existence'] = 'function', 'matrix'
 
             (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute(label, score)
-            # (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute_wrapper(label, score)
             results[-1].update(ff_vus_time_analysis)
         else:
             if metric == 'range_auc_pr' or metric == 'vus_pr':
@@ -163,7 +106,7 @@ def compute_metric_over_dataset(
 ):
     # Load dataset
     if dataset == 'tsb':
-        filenames, labels, scores, _ = load_tsb(testing=testing)
+        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='KDD21', n_timeseries=10)
     elif 'synthetic' in  dataset:
         filenames, labels, scores = load_synthetic(dataset=dataset, testing=testing)
     else:

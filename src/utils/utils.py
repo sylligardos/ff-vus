@@ -13,6 +13,62 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import re
 
+from .scoreloader import Scoreloader
+from .dataloader import Dataloader
+
+
+def load_tsb(testing=False, dataset='KDD21', n_timeseries=10):
+    # Load the TSB-UAD benchmark
+    dataloader = Dataloader(raw_data_path='data/raw')
+    datasets = [dataset] if testing else dataloader.get_dataset_names()
+    _, labels, filenames = dataloader.load_raw_datasets(datasets)
+    
+    if testing:
+        labels = labels[:n_timeseries]
+        filenames = filenames[:n_timeseries]
+
+    scoreloader = Scoreloader('data/scores')
+    detectors = scoreloader.get_detector_names()
+    scores, idx_failed = scoreloader.load_parallel(filenames)
+    labels, filenames = scoreloader.clean_failed_idx(labels, idx_failed), scoreloader.clean_failed_idx(filenames, idx_failed)
+    if len(scores) != len(labels) or len(scores) != len(filenames):
+        raise ValueError(f'Size of scores and labels is not the same, scores: {len(scores)}, labels: {len(labels)}, filenames: {len(filenames)}')
+
+    # Pick a random detector score for each label
+    if testing:
+        detectors_idx = np.zeros(len(labels)).astype(int)
+    else:    
+        detectors_idx = np.random.randint(0, len(detectors), size=len(labels))
+    scores = [score[:, idx] for score, idx in zip(scores, detectors_idx)]
+
+    detectors_selected = [detectors[idx] for idx in detectors_idx]
+
+    return filenames, labels, scores, detectors_selected
+
+def load_synthetic(dataset, testing=False):
+    # Load dataset
+    dataset_path = os.path.join('data', 'synthetic', dataset)
+    csv_files = [x for x in os.listdir(dataset_path) if '.csv' in x or '.npy' in x]
+
+    labels = []
+    scores = []
+
+    for file in tqdm(csv_files, desc="Loading synthetic"):
+        if '.csv' in file:
+            data = np.loadtxt(os.path.join(dataset_path, file), delimiter=",")
+        else:
+            data = np.load(os.path.join(dataset_path, file))
+        label = data[:, 0]
+        score = data[:, 1]
+        labels.append(label)
+        scores.append(score)
+        if testing: break
+
+    labels = np.array(labels)
+    scores = np.array(scores).round(2)
+
+    return csv_files, labels, scores
+
 def time_it(func):
     """Wrapper to measure execution time of a function."""
     @functools.wraps(func)
