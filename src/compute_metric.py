@@ -16,6 +16,7 @@ from vus.vus_numpy import VUSNumpy
 from vus.vus_torch import VUSTorch
 from legacy.sylli_metrics import sylli_get_metrics
 from utils.utils import analyze_label, natural_keys, load_synthetic, load_tsb
+import time
 
 
 def compute_metric(
@@ -107,7 +108,7 @@ def compute_metric_over_dataset(
 ):
     # Load dataset
     if dataset == 'tsb':
-        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='MITDB', n_timeseries=10)
+        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='KDD21', n_timeseries=10)
     elif 'synthetic' in  dataset:
         filenames, labels, scores = load_synthetic(dataset=dataset, testing=testing)
     else:
@@ -119,7 +120,9 @@ def compute_metric_over_dataset(
         metrics = [metric]
 
     for metric in metrics:
+        start_time = time.time()
         df = compute_metric(filenames, labels, scores, metric, global_mask, slope_size, step, slopes, existence, conf_matrix)
+        exec_time = time.time() - start_time
 
         # Generate saving path and results file name
         filename = f"{dataset}_{metric.replace('_', '-').upper()}"
@@ -136,6 +139,7 @@ def compute_metric_over_dataset(
         print(filename)
         print(df)
         print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
+        print(f"Verifying execution time: {exec_time/len(filenames):.3f} seconds")
         
         if not testing:
             os.makedirs(os.path.join(saving_path, 'results'), exist_ok=True)
