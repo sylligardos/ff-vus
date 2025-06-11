@@ -19,7 +19,7 @@ import numpy as np
 
 
 @time_it
-def sylli_get_metrics(label, score, metric, slope_size=None):
+def sylli_get_metrics(label, score, metric, slope_size=None, existence=True):
     """
     Compute the selected evaluation metric given the labels, anomaly scores,
     and slope_size when required.
@@ -34,9 +34,10 @@ def sylli_get_metrics(label, score, metric, slope_size=None):
     Returns:
         float: Computed value of the selected metric.
     """
+
     if metric == 'vus_pr' and slope_size is not None:
         compute_legacy = metricor()
-        _, _, _, _, metric_value = compute_legacy.RangeAUC_volume_opt_mem(label, score, slope_size)
+        _, _, _, _, metric_value = compute_legacy.RangeAUC_volume_opt_mem(label, score, slope_size, existence_flag=existence)
     elif metric == 'rf':
         metric_value = basic_metricor().sylli_RF(label, score)
     elif metric == 'affiliation':

@@ -468,7 +468,7 @@ class metricor:
 			ap_3d[window] = AP_range
 		return tpr_3d, fpr_3d, prec_3d, window_3d, sum(auc_3d) / len(window_3d), sum(ap_3d) / len(window_3d)
 
-	def RangeAUC_volume_opt_mem(self, labels_original, score, windowSize, thre=250):
+	def RangeAUC_volume_opt_mem(self, labels_original, score, windowSize, thre=250, existence_flag=True):
 		window_3d = np.arange(0, windowSize + 1, 1)
 		P = np.sum(labels_original)
 		seq = self.range_convers_new(labels_original)
@@ -503,10 +503,9 @@ class metricor:
 			for i in range(len(thresholds)):
 				labels = labels_extended.copy()
 				existence = 0
-
 				for seg in L:
 					labels[seg[0]:seg[1] + 1] = labels_extended[seg[0]:seg[1] + 1] * p[j][seg[0]:seg[1] + 1]
-					if (p[j][seg[0]:(seg[1] + 1)] > 0).any():
+					if existence_flag and (p[j][seg[0]:(seg[1] + 1)] > 0).any():
 						existence += 1
 				for seg in seq:
 					labels[seg[0]:seg[1] + 1] = 1
@@ -518,7 +517,7 @@ class metricor:
 					N_labels += np.sum(labels[seg[0]:seg[1] + 1])
 
 				FP = N_pred[j] - TP
-				existence_ratio = existence / len(L)
+				existence_ratio = (existence / len(L)) if existence_flag else 1
 
 				P_new = (P + N_labels) / 2
 				recall = min(TP / P_new, 1)

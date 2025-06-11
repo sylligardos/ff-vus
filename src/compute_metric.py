@@ -66,7 +66,8 @@ def compute_metric(
         if metric == 'ff_vus_pr' or metric == 'ff_vus_pr_gpu': 
             results[-1].update({
                 'Slope size': slope_size,
-                'Step': step,  
+                'Step': step,
+                'Global mask': global_mask,
                 'Slopes': slopes,
                 'Existence': existence,
                 'Confusion matrix': conf_matrix,
@@ -84,8 +85,11 @@ def compute_metric(
                 results[-1].update({
                     'Slope size': slope_size
                 })
-
-            metric_value, metric_time = sylli_get_metrics(label, score, metric, slope_size)
+            if metric == 'vus_pr':
+                results[-1].update({
+                    'Existence': True if existence != 'None' else False
+                })
+            metric_value, metric_time = sylli_get_metrics(label, score, metric, slope_size, existence=True if existence != 'None' else False)
 
         results[-1].update({
             'Metric': metric_name,
@@ -108,56 +112,68 @@ def compute_metric_over_dataset(
 ):
     # Load dataset
     if dataset == 'tsb':
-        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='KDD21', n_timeseries=10)
+        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='YAHOO', n_timeseries=10)
     elif 'synthetic' in  dataset:
         filenames, labels, scores = load_synthetic(dataset=dataset, testing=testing)
     else:
         raise ValueError(f"Wrong argument for dataset: {dataset}")
 
     if metric == 'all':
-        metrics = ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'affiliation', 'range_auc_pr', 'vus_pr', 'rf']
+        metrics = ['ff_vus_pr', 'vus_pr']
+        # metrics = ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'affiliation', 'range_auc_pr', 'vus_pr', 'rf']
     else:
         metrics = [metric]
 
-    for metric in metrics:
-        start_time = time.time()
-        df = compute_metric(filenames, labels, scores, metric, global_mask, slope_size, step, slopes, existence, conf_matrix)
-        exec_time = time.time() - start_time
+    slope_sizes = [16, 32, 64, 128, 256] if 'vus_pr' in metrics or 'ff_vus_pr' in metrics else [0]
 
-        # Generate saving path and results file name
-        filename = f"{dataset}_{metric.replace('_', '-').upper()}"
-        if metric in ['ff_vus_pr', 'ff_vus_pr_gpu', 'range_auc_pr', 'vus_pr']:
-            filename += f"_{slope_size}"
-        if metric in ['ff_vus_pr', 'ff_vus_pr_gpu']:
-            filename += f"_{step}_{conf_matrix}"
-        if metric == 'ff_vus_pr':
-            filename += f"_{slopes}_{existence}"
-        filename += ".csv"
-        saving_path = os.path.join('experiments', 'preliminary')
+    for slope_size in slope_sizes:
+        for metric in metrics:
+            start_time = time.time()
+            df = compute_metric(filenames, labels, scores, metric, global_mask, slope_size, step, slopes, existence, conf_matrix)
+            exec_time = time.time() - start_time
 
-        # Save the results
-        print(filename)
-        print(df)
-        print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
-        print(f"Verifying execution time: {exec_time/len(filenames):.3f} seconds")
-        
-        if not testing:
-            os.makedirs(os.path.join(saving_path, 'results'), exist_ok=True)
-            os.makedirs(os.path.join(saving_path, 'info'), exist_ok=True)
+            # Generate saving path and results file name
+            filename = f"{dataset}_{metric.replace('_', '-').upper()}"
+            if metric in ['ff_vus_pr', 'ff_vus_pr_gpu', 'range_auc_pr', 'vus_pr']:
+                filename += f"_{slope_size}"
+            if metric in ['ff_vus_pr', 'ff_vus_pr_gpu']:
+                filename += f"_{step}_{conf_matrix}_{'globalmask' if global_mask else 'noglobalmask'}"
+            if metric == 'ff_vus_pr':
+                filename += f"_{slopes}_{existence}"
+            filename += ".csv"
+            saving_path = os.path.join('experiments', 'vus_ffvus_auc_0')
 
-            df.to_csv(os.path.join(saving_path, 'results', filename))
+            # Save the results
+            print(f"Saving results in: {filename}")
+            print(df)
+            print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
+            
+            if not testing:
+                os.makedirs(os.path.join(saving_path, 'results'), exist_ok=True)
+                os.makedirs(os.path.join(saving_path, 'info'), exist_ok=True)
 
-            info_df = pd.DataFrame([{
-                "Experiment": f"Compute {metric}",
-                "Number of results": len(df),
-                "Slope size": slope_size,
-                "Step": step,
-                "Slopes": slopes,
-                "Existence": existence,
-                "Confusion matrix": conf_matrix,
-                "Time": df.iloc[:, -1].sum(),
-            }])
-            info_df.to_csv(os.path.join(saving_path, 'info', filename), index=False)
+                df.to_csv(os.path.join(saving_path, 'results', filename))
+
+                info_df = pd.DataFrame([{
+                    "GPU": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+                    "GPU Memory (GB)": round(torch.cuda.get_device_properties(0).total_memory / (1024 ** 3), 2) if torch.cuda.is_available() else None,
+                    "CPU": os.popen("lscpu | grep 'Model name' | awk -F ':' '{print $2}'").read().strip(),
+                    "Cores": os.cpu_count(),
+                    "RAM (GB)": round(os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024.**3), 2) if hasattr(os, 'sysconf') else None,
+                    "Platform": os.uname().sysname if hasattr(os, 'uname') else None,
+                    "Platform-release": os.uname().release if hasattr(os, 'uname') else None,
+                    "Python version": f"{os.sys.version_info.major}.{os.sys.version_info.minor}.{os.sys.version_info.micro}",
+                    "Experiment": f"Compute {metric}",
+                    "Number of results": len(df),
+                    "Slope size": slope_size,
+                    "Step": step,
+                    "Global mask": global_mask,
+                    "Slopes": slopes,
+                    "Existence": existence,
+                    "Confusion matrix": conf_matrix,
+                    "Time": df.iloc[:, -1].sum(),
+                }])
+                info_df.to_csv(os.path.join(saving_path, 'info', filename), index=False)
 
     return df
 
@@ -177,7 +193,7 @@ if __name__ == "__main__":
                         help='Slope generation method')
     parser.add_argument('--existence', type=str, choices=['None', 'trivial', 'optimized', 'matrix'], default='optimized',
                         help='Existence computation method')
-    parser.add_argument('--conf_matrix', type=str, choices=['trivial', 'dynamic', 'dynamic_plus'], default='dynamic',
+    parser.add_argument('--conf_matrix', type=str, choices=['trivial', 'dynamic', 'dynamic_plus'], default='dynamic_plus',
                         help='Type of confusion matrix computation')
     parser.add_argument('--testing', action='store_true', help='Run in testing mode (limits the data for fast testing)')
 
@@ -185,7 +201,7 @@ if __name__ == "__main__":
 
     if args.dataset == 'all_synthetic':
         synthetic_dir = os.path.join('data', 'synthetic')
-        datasets = [x for x in os.listdir(synthetic_dir) if not '1000000000' in x and not '10000000000' in x]
+        datasets = [x for x in os.listdir(synthetic_dir) if not '10000000000' in x]
     else:
         datasets = [args.dataset]
     datasets.sort(key=natural_keys)
@@ -194,7 +210,7 @@ if __name__ == "__main__":
         compute_metric_over_dataset(
             dataset=dataset,
             metric=args.metric,
-            global_mask=args.global_mask,
+            global_mask=True, # args.global_mask,
             slope_size=args.slope_size,
             step=args.step,
             slopes=args.slopes,

@@ -77,19 +77,19 @@ experiments = {
     #         "True if (slope_size == 0 and 'metric' == 'auc_pr') or 'metric' != 'auc_pr' else False"
     #     ]
     # },
-    "vus_ffvus_auc_synthetic": {
-        "job_name": "vus_ffvus_auc_synthetic",
+    "vus_ffvus_auc_0": {
+        "job_name": "vus_ffvus_auc_0",
         "environment": "ffvus",
         "script_name": "src/compute_metric.py",
-        "template": 'cleps_gpu',
+        "template": 'cleps_cpu',
         "args": {
             "dataset": ['all_synthetic'], # + os.listdir(os.path.join('data', 'synthetic')),
-            "metric": ['ff_vus_pr_gpu'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
-            "slope_size": [0, 16, 32, 64, 128, 256],
-            "step":  [1],
-            "slopes": ['function'], #, 'function'
-            "existence": ['matrix'], #, 'matrix'
-            "conf_matrix": ['dynamic_plus'],
+            "metric": ['auc_pr', 'vus_pr', 'ff_vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
+            # "slope_size": [16, 32, 64, 128, 256],
+            # "step":  [1],
+            # "slopes": ['function'], #, 'function'
+            # "existence": ['matrix'], #, 'matrix'
+            # "conf_matrix": ['dynamic_plus'],
         },
         "rules": []
     }
@@ -97,7 +97,7 @@ experiments = {
 
 def create_shell_scripts():
     parent_dir = "scripts"
-    experiment_name = "vus_ffvus_auc_synthetic"
+    experiment_name = "vus_ffvus_auc_0"
 
     logs_saving_dir = os.path.join("experiments", experiment_name)
     experiment_desc = experiments[experiment_name]
