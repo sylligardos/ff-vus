@@ -93,6 +93,7 @@ class VUSTorch():
         self.update_max_memory_tokens()
         # label = label.to(torch.uint8) TODO: Is this correct?
         # score = score.to(torch.float16)
+        fp = tp = positives = anomalies_found = total_anomalies = time_sm = time_slopes = time_existence = time_confusion = time_pos = 0
 
         ((_), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates(label)
         safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=self.global_mask)
@@ -106,10 +107,13 @@ class VUSTorch():
             for chunk in tqdm(chunks, desc='Computing extra FPs', leave=False):
                 sm, extra_time_sm = self.get_score_mask(chunk, thresholds)
                 extra_fp += sm.sum(axis=1)
+                time_sm += extra_time_sm
 
             label, score = label[safe_mask], score[safe_mask]
-            ((_), (start_with_edges, end_with_edges)), extra_time_anom_coord = self.get_anomalies_coordinates(label)
+            ((_), (start_with_edges, end_with_edges)), extra_time_anomalies_coord = self.get_anomalies_coordinates(label)
             safe_mask, extra_time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges)
+            time_anomalies_coord += extra_time_anomalies_coord
+            time_safe_mask += extra_time_safe_mask
 
         # Number of chunks required to fit into memory
         sloped_label_mem_size = self.n_slopes * len(label) * 4
@@ -117,7 +121,6 @@ class VUSTorch():
         split_points = self.find_safe_splits(label, safe_mask, n_splits)
 
         # Computation in chunks
-        fp = tp = positives = anomalies_found = total_anomalies = time_sm = time_slopes = time_existence = time_confusion = time_pos = 0
         prev_split = 0
         for curr_split in tqdm(split_points, desc='In distance from anomaly', disable=(n_splits <= 10), leave=False):
             label_c = label[prev_split:curr_split]
@@ -125,7 +128,7 @@ class VUSTorch():
             safe_mask_c = safe_mask[prev_split:curr_split]
             
             # Preprocessing
-            ((_), (start_with_edges_c, end_with_edges_c)), chunk_time_anom_coord = self.get_anomalies_coordinates(label_c)
+            ((_), (start_with_edges_c, end_with_edges_c)), chunk_time_anomalies_coord = self.get_anomalies_coordinates(label_c)
             pos, chunk_time_pos = self.distance_from_anomaly(label_c, start_with_edges_c, end_with_edges_c)
             sm, chunk_time_sm = self.get_score_mask(score_c, thresholds)
 
@@ -140,7 +143,7 @@ class VUSTorch():
             positives += positives_c
             anomalies_found += anomalies_found_c
             total_anomalies += total_anomalies_c
-            time_anomalies_coord += chunk_time_anom_coord
+            time_anomalies_coord += chunk_time_anomalies_coord
             time_pos += chunk_time_pos
             time_sm += chunk_time_sm
             time_slopes += chunk_time_slope
@@ -154,9 +157,6 @@ class VUSTorch():
         
         if self.global_mask:
             fp += extra_fp
-            time_anomalies_coord += extra_time_anom_coord
-            time_safe_mask += extra_time_safe_mask
-            time_sm += extra_time_sm
 
         # After chunking
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
@@ -179,7 +179,7 @@ class VUSTorch():
 
     def process_in_chunks(self, data):
         data_mem_size = data.nbytes * 100  # Around 100 thresholds 
-        n_splits = int(np.ceil(data_mem_size / self.max_memory_tokens))
+        n_splits = np.ceil(data_mem_size / self.max_memory_tokens).astype(int)
         chunk_size = len(data) // n_splits
 
         for i in range(n_splits):

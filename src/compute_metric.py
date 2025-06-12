@@ -124,8 +124,8 @@ def compute_metric_over_dataset(
     else:
         metrics = [metric]
 
-    slope_sizes = [16, 32, 64, 128, 256] if 'vus_pr' in metrics or 'ff_vus_pr' in metrics else [0]
-
+    slope_sizes = [0, 16, 32, 64, 128, 256]
+    
     for slope_size in slope_sizes:
         for metric in metrics:
             start_time = time.time()
@@ -141,7 +141,7 @@ def compute_metric_over_dataset(
             if metric == 'ff_vus_pr':
                 filename += f"_{slopes}_{existence}"
             filename += ".csv"
-            saving_path = os.path.join('experiments', 'vus_ffvus_auc_0')
+            saving_path = os.path.join('experiments', 'vus_ffvus_ffvusgpu_tsb')
 
             # Save the results
             print(f"Saving results in: {filename}")
