@@ -138,9 +138,7 @@ def compute_metric_over_dataset(
             if metric in ['ff_vus_pr', 'ff_vus_pr_gpu', 'range_auc_pr', 'vus_pr']:
                 filename += f"_{slope_size}"
             if metric in ['ff_vus_pr', 'ff_vus_pr_gpu']:
-                filename += f"_{step}_{conf_matrix}_{'globalmask' if global_mask else 'noglobalmask'}"
-            if metric == 'ff_vus_pr':
-                filename += f"_{slopes}_{existence}"
+                filename += f"_{step}_{conf_matrix}_{'globalmask' if global_mask else 'noglobalmask'}_{slopes}_{existence}"
             filename += ".csv"
 
             # Save the results

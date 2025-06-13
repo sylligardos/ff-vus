@@ -178,6 +178,8 @@ class VUSTorch():
         return vus_pr, time_analysis
 
     def process_in_chunks(self, data):
+        if len(data) == 0:
+            return
         data_mem_size = data.nbytes * 100  # Around 100 thresholds 
         n_splits = np.ceil(data_mem_size / self.max_memory_tokens).astype(int)
         chunk_size = len(data) // n_splits
