@@ -23,7 +23,7 @@ import os
 import time
 import numpy as np
 
-def evaluate_ffvus_random(testing):
+def evaluate_ffvus_random(testing, experiment_dir=None):
     tic = time.time()
     dataloader = Dataloader(raw_data_path='data/raw')
     datasets = ['KDD21'] if testing else dataloader.get_dataset_names()
@@ -51,7 +51,7 @@ def evaluate_ffvus_random(testing):
     global_mask = True if testing else np.random.choice([True, False])
     slopes = 'precomputed' if testing else np.random.choice(['precomputed', 'function'])
     existence = 'optimized' if testing else np.random.choice(['optimized'])   # 'trivial', 'matrix' are also options
-    conf_matrix = 'dynamic_plus' if testing else np.random.choice(['trivial', 'dynamic', 'dynamic_plus'])          
+    conf_matrix = 'dynamic_plus' if testing else np.random.choice(['dynamic', 'dynamic_plus'])          
     interpolation = 'stepwise'  # ['linear', 'stepwise']
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -196,23 +196,35 @@ def evaluate_ffvus_random(testing):
     print(f"AUC-PR - FF-AUC-PR-GPU: average dif.: {df['AUC-PR - FF-AUC-PR-GPU'].mean()}, max dif.: {df['AUC-PR - FF-AUC-PR-GPU'].max()}, avg slow down: {df['AUC-PR-GPU Slow down'].mean()}")
     print(f"VUS-PR - FF-VUS-PR-GPU: average dif.: {df['VUS-PR - FF-VUS-PR-GPU'].mean()}, max dif.: {df['VUS-PR - FF-VUS-PR-GPU'].max()}, avg speed up: {df['VUS-PR-GPU Speed up'].mean()}")
 
-    if testing:
-        return 0
-    
-    curr_experiment_name = f"evaluate_{slope_size}_{step}_{slopes}_{existence}_{conf_matrix}.csv"
-    saving_path = os.path.join("experiments", "14_04_2025", "results", curr_experiment_name)
-    df.to_csv(saving_path)
+    if experiment_dir is not None:    
+        saving_path = os.path.join('experiments', experiment_dir)
+        results_path = os.path.join(saving_path, 'results')
+        info_path = os.path.join(saving_path, 'info')
 
-    info_df = pd.DataFrame([{
-        "Experiment": "Evaluate FF-VUS-PR",
-        "Slope size": slope_size,
-        "Step": step,
-        "Slopes": slopes,
-        "Existence": existence,
-        "Confusion matrix": conf_matrix,
-        "Time": time.time() - tic,
-    }])
-    info_df.to_csv(os.path.join("experiments", "14_04_2025", "info", curr_experiment_name), index=False)
+        os.makedirs(saving_path, exist_ok=True)
+        os.makedirs(results_path, exist_ok=True)
+        os.makedirs(info_path, exist_ok=True)
+
+        vus_mean_error = df["VUS-PR - FF-VUS-PR"].mean()
+        vus_max_error = df["VUS-PR - FF-VUS-PR"].max()
+        vus_gpu_mean_error = df["VUS-PR - FF-VUS-PR-GPU"].mean()
+        vus_gpu_max_error = df["VUS-PR - FF-VUS-PR-GPU"].max()
+        curr_experiment_name = f"evaluate_vusmean{vus_mean_error:.2e}_vusmax{vus_max_error:.2e}_vusgpumean{vus_gpu_mean_error:.2e}_vusgpumax{vus_gpu_max_error:.2e}.csv"
+        results_file = os.path.join(results_path, curr_experiment_name)
+        df.to_csv(results_file, index=False)
+
+        info_df = pd.DataFrame([{
+            "Experiment": "Evaluate FF-VUS-PR",
+            "Slope size": slope_size,
+            "Global mask": global_mask,
+            "Step": step,
+            "Slopes": slopes,
+            "Existence": existence,
+            "Confusion matrix": conf_matrix,
+            "Time": time.time() - tic,
+        }])
+        info_file = os.path.join(info_path, curr_experiment_name)
+        info_df.to_csv(info_file, index=False)
 
 
 if __name__ == "__main__":
@@ -221,7 +233,8 @@ if __name__ == "__main__":
         description='Run experiments on the current implementation of the VUS metric'
     )
     parser.add_argument('--testing', action='store_true', help='Run in testing mode (limits the data for fast testing)')
-    
+    parser.add_argument('--experiment', type=str, default=None, help='Directory to save experiment results (optional)')
+
     args = parser.parse_args()
 
-    evaluate_ffvus_random(testing=args.testing)
+    evaluate_ffvus_random(testing=args.testing, experiment_dir=args.experiment)

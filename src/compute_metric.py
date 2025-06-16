@@ -9,14 +9,13 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 import os
-import numpy as np
 import torch
+from datetime import datetime
 
 from vus.vus_numpy import VUSNumpy
 from vus.vus_torch import VUSTorch
 from legacy.sylli_metrics import sylli_get_metrics
 from utils.utils import analyze_label, natural_keys, load_synthetic, load_tsb
-import time
 
 
 def compute_metric(
@@ -109,6 +108,7 @@ def compute_metric_over_dataset(
         existence='optimized',
         conf_matrix='dynamic',
         testing=False,
+        experiment_dir=None,
 ):
     # Load dataset
     if dataset == 'tsb':
@@ -119,40 +119,43 @@ def compute_metric_over_dataset(
         raise ValueError(f"Wrong argument for dataset: {dataset}")
 
     if metric == 'all':
-        metrics = ['ff_vus_pr', 'vus_pr']
-        # metrics = ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'affiliation', 'range_auc_pr', 'vus_pr', 'rf']
+        # metrics = ['ff_vus_pr', 'vus_pr']
+        metrics = ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'affiliation', 'range_auc_pr', 'vus_pr', 'rf']
     else:
         metrics = [metric]
 
-    slope_sizes = [0, 16, 32, 64, 128, 256]
+    if slope_size == -1:
+        slope_sizes = [0, 16, 32, 64, 128, 256]
+    else:
+        slope_sizes = [slope_size]
     
-    for slope_size in slope_sizes:
-        for metric in metrics:
-            start_time = time.time()
+    for metric in metrics:
+        for slope_size in slope_sizes:
             df = compute_metric(filenames, labels, scores, metric, global_mask, slope_size, step, slopes, existence, conf_matrix)
-            exec_time = time.time() - start_time
-
+            
             # Generate saving path and results file name
             filename = f"{dataset}_{metric.replace('_', '-').upper()}"
             if metric in ['ff_vus_pr', 'ff_vus_pr_gpu', 'range_auc_pr', 'vus_pr']:
                 filename += f"_{slope_size}"
             if metric in ['ff_vus_pr', 'ff_vus_pr_gpu']:
-                filename += f"_{step}_{conf_matrix}_{'globalmask' if global_mask else 'noglobalmask'}"
-            if metric == 'ff_vus_pr':
-                filename += f"_{slopes}_{existence}"
+                filename += f"_{step}_{conf_matrix}_{'globalmask' if global_mask else 'noglobalmask'}_{slopes}_{existence}"
             filename += ".csv"
-            saving_path = os.path.join('experiments', 'vus_ffvus_ffvusgpu_tsb')
 
             # Save the results
-            print(f"Saving results in: {filename}")
             print(df)
             print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
             
-            if not testing:
-                os.makedirs(os.path.join(saving_path, 'results'), exist_ok=True)
-                os.makedirs(os.path.join(saving_path, 'info'), exist_ok=True)
+            if experiment_dir is not None:
+                print(f"Saving results in: {filename}")
+                saving_path = os.path.join('experiments', experiment_dir)
+                results_path = os.path.join(saving_path, 'results')
+                info_path = os.path.join(saving_path, 'info')
 
-                df.to_csv(os.path.join(saving_path, 'results', filename))
+                os.makedirs(saving_path, exist_ok=True)
+                os.makedirs(results_path, exist_ok=True)
+                os.makedirs(info_path, exist_ok=True)
+
+                df.to_csv(os.path.join(results_path, filename))
 
                 info_df = pd.DataFrame([{
                     "GPU": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
@@ -173,7 +176,9 @@ def compute_metric_over_dataset(
                     "Confusion matrix": conf_matrix,
                     "Time": df.iloc[:, -1].sum(),
                 }])
-                info_df.to_csv(os.path.join(saving_path, 'info', filename), index=False)
+                info_df.to_csv(os.path.join(info_path, filename), index=False)
+            if metric in ['auc_pr', 'affiliation', 'rf']:
+                break
 
     return df
 
@@ -196,6 +201,7 @@ if __name__ == "__main__":
     parser.add_argument('--conf_matrix', type=str, choices=['trivial', 'dynamic', 'dynamic_plus'], default='dynamic_plus',
                         help='Type of confusion matrix computation')
     parser.add_argument('--testing', action='store_true', help='Run in testing mode (limits the data for fast testing)')
+    parser.add_argument('--experiment', type=str, default=None, help='Directory to save experiment results and info')
 
     args = parser.parse_args()
 
@@ -216,5 +222,6 @@ if __name__ == "__main__":
             slopes=args.slopes,
             existence=args.existence,
             conf_matrix=args.conf_matrix,
-            testing=args.testing
+            testing=args.testing,
+            experiment_dir=args.experiment,
         )

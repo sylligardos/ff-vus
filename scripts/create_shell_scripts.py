@@ -34,7 +34,6 @@ experiments = {
         },
         "rules": ["True if n_anomalies * avg_anomaly_length <= 0.2 * ts_length else False"]
     },
-
     "compute_metric": {
         "job_name": "compute_metric",
         "environment": "ffvus",
@@ -58,35 +57,33 @@ experiments = {
             "True if step <= slope_size or (slope_size == 0 and 'metric' == 'ff_vus_pr' and step == 1) else False"
         ]
     },
-
-    # "vus_ffvus_auc_synthetic": {
-    #     "job_name": "vus_ffvus_auc_synthetic",
-    #     "environment": "ffvus",
-    #     "script_name": "src/compute_metric.py",
-    #     "template": 'cleps_cpu',
-    #     "args": {
-    #         "dataset": ['all_synthetic'], # + os.listdir(os.path.join('data', 'synthetic')),
-    #         "metric": ['vus_pr', 'ff_vus_pr', 'auc_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
-    #         "slope_size": [0, 16, 32, 64, 128, 256],
-    #         "step":  [1],
-    #         "slopes": ['precomputed'], #, 'function'
-    #         "existence": ['optimized'], #, 'matrix'
-    #         "conf_matrix": ['dynamic_plus'],
-    #     },
-    #     "rules": [
-    #         "True if (slope_size == 0 and 'metric' == 'auc_pr') or 'metric' != 'auc_pr' else False"
-    #     ]
-    # },
-    "vus_ffvus_auc_0": {
-        "job_name": "vus_ffvus_auc_0",
+    "vus_ffvus_auc_synthetic": {
+        "job_name": "vus_ffvus_auc_synthetic",
+        "environment": "ffvus",
+        "script_name": "src/compute_metric.py",
+        "template": 'cleps_cpu',
+        "args": {
+            "dataset": ['all_synthetic'], # + os.listdir(os.path.join('data', 'synthetic')),
+            "metric": ['vus_pr', 'ff_vus_pr', 'auc_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
+            "slope_size": [0, 16, 32, 64, 128, 256],
+            "step":  [1],
+            "slopes": ['precomputed'], #, 'function'
+            "existence": ['optimized'], #, 'matrix'
+            "conf_matrix": ['dynamic_plus'],
+        },
+        "rules": [
+            "True if (slope_size == 0 and 'metric' == 'auc_pr') or 'metric' != 'auc_pr' else False"
+        ]
+    },
+    "vus_ffvus_ffvusgpu_tsb": {
         "environment": "ffvus",
         "script_name": "src/compute_metric.py",
         "template": 'cleps_gpu',
         "args": {
             "dataset": ['tsb'], # + os.listdir(os.path.join('data', 'synthetic')),
             "metric": ['ff_vus_pr_gpu'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
-            # "slope_size": [16, 32, 64, 128, 256],
-            # "step":  [1],
+            "slope_size": [-1], # [0, 16, 32, 64, 128, 256],
+            "step":  [1],
             # "slopes": ['function'], #, 'function'
             "existence": ['None'], #, 'matrix'
             # "conf_matrix": ['dynamic_plus'],
@@ -100,30 +97,25 @@ def create_shell_scripts():
     experiment_name = "vus_ffvus_auc_0"
 
     logs_saving_dir = os.path.join("experiments", experiment_name)
+    os.makedirs(logs_saving_dir, exist_ok=True)
     experiment_desc = experiments[experiment_name]
     
     # Analyse json
-    saving_dir = os.path.join(parent_dir, experiment_desc['job_name'])
+    job_name = experiment_name
+    saving_dir = os.path.join(parent_dir, job_name)
     environment = experiment_desc["environment"]
     script_name = experiment_desc["script_name"]
+    template = sh_templates[experiment_desc["template"]]
     args = experiment_desc["args"]
     arg_names = list(args.keys())
     arg_values = list(args.values())
     rules = experiment_desc['rules']
-    cmd = f"{script_name}"
-    job_name = experiment_desc["job_name"]
-    template = sh_templates[experiment_desc["template"]]
-
-    # Generate all possible combinations of arguments
-    combinations = list(itertools.product(*arg_values))
     
-    # Create the saving dir for the scripts if it doesn't exist
-    os.makedirs(saving_dir, exist_ok=True)
-
-    # Create the commands
     jobs = set()
+    os.makedirs(saving_dir, exist_ok=True)
+    combinations = list(itertools.product(*arg_values))
     for combination in tqdm(combinations):
-        curr_cmd = cmd
+        curr_cmd = script_name
         curr_job_name = job_name
         curr_rules = deepcopy(rules)
 
@@ -133,6 +125,8 @@ def create_shell_scripts():
             for i in range(len(curr_rules)):
                 curr_rules[i] = curr_rules[i].replace(name, str(value))
         
+        curr_cmd += f"--experiment {experiment_name}"
+
         # Evaluate rules to see if we accept this combination, if not skip
         rules_evaluation = [eval(rule) for rule in curr_rules]
         if not all(rules_evaluation):
@@ -151,7 +145,7 @@ def create_shell_scripts():
     for job in jobs:
         run_all_sh += f"sbatch {os.path.join(saving_dir, f'{job}.sh')}\n"
     
-    with open(os.path.join(saving_dir, f'a_conduct_{experiment_desc["job_name"]}.sh'), 'w') as rsh:
+    with open(os.path.join(saving_dir, f'conduct_{job_name}.sh'), 'w') as rsh:
         rsh.write(run_all_sh)
         
 
