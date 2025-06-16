@@ -77,8 +77,8 @@ experiments = {
     #         "True if (slope_size == 0 and 'metric' == 'auc_pr') or 'metric' != 'auc_pr' else False"
     #     ]
     # },
-    "vus_ffvus_ffvusgpu_tsb": {
-        "job_name": "vus_ffvus_ffvusgpu_tsb",
+    "vus_ffvus_auc_0": {
+        "job_name": "vus_ffvus_auc_0",
         "environment": "ffvus",
         "script_name": "src/compute_metric.py",
         "template": 'cleps_gpu',
@@ -88,7 +88,7 @@ experiments = {
             # "slope_size": [16, 32, 64, 128, 256],
             # "step":  [1],
             # "slopes": ['function'], #, 'function'
-            # "existence": ['matrix'], #, 'matrix'
+            "existence": ['None'], #, 'matrix'
             # "conf_matrix": ['dynamic_plus'],
         },
         "rules": []
@@ -97,7 +97,7 @@ experiments = {
 
 def create_shell_scripts():
     parent_dir = "scripts"
-    experiment_name = "vus_ffvus_ffvusgpu_tsb"
+    experiment_name = "vus_ffvus_auc_0"
 
     logs_saving_dir = os.path.join("experiments", experiment_name)
     experiment_desc = experiments[experiment_name]
