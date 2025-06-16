@@ -43,7 +43,7 @@ class VUSTorch():
             raise ValueError(f"Error with the step: {step}. It should be a positive value and a perfect divider of the slope_size.")
         if zita < 0 and zita > 1:
             raise ValueError(f"Error with the zita: {zita}. It should be a value between 0 and 1.")
-        
+
         if device is None:
             self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         else:
@@ -51,8 +51,8 @@ class VUSTorch():
         if self.device == 'cpu':
             print('You are using the GPU version of VUS on a CPU. If this is intended you can try the lighter numpy version!')
 
-        self.slope_size, self.step, self.zita = slope_size, step, zita 
-        self.existence, self.global_mask = existence, global_mask
+        self.slope_size, self.step, self.zita, self.global_mask = slope_size, step, zita, global_mask    
+        self.existence = False if existence == 'None'else existence
         
         self.slope_values = torch.arange(
             start=0, 
@@ -60,7 +60,7 @@ class VUSTorch():
             step=self.step, 
             device=self.device, 
             dtype=torch.int16 if self.slope_size < 32000 else torch.int32 
-        ) if step > 0 else torch.tensor([0])
+        ) if self.slope_size > 0 else torch.tensor([0], device=self.device)
         self.n_slopes = self.slope_values.shape[0]
 
         conf_matrix_args = ['dynamic', 'dynamic_plus']
@@ -154,7 +154,7 @@ class VUSTorch():
 
         # Combine existence of all chunks
         existence = anomalies_found / total_anomalies if self.existence else torch.ones((self.n_slopes, thresholds.shape[0]), device=self.device)
-        
+
         if self.global_mask:
             fp += extra_fp
 
@@ -204,7 +204,6 @@ class VUSTorch():
         if valid_splits.numel() == 0 or n_splits < 1:
             return torch.tensor([], device=self.device)
 
-        # print(length, n_splits)
         ideal_splits = torch.linspace(0, length - 1, steps=n_splits + 1, device=self.device)[1:-1]        
 
         dists = torch.abs(valid_splits[:, None] - ideal_splits[None, :])
@@ -323,7 +322,6 @@ class VUSTorch():
         Returns:
             Tensor of shape (n_slopes, T) with transformed slope values.
         """
-
         device = label.device
         T = label.size(0)
 
@@ -354,7 +352,7 @@ class VUSTorch():
             Tensor of shape [s, t] representing existence score (fraction of anomalies found).
         """
         if not self.existence:
-            return 0 if normalize else (0, 0)
+            return 1 if normalize else (1, 1)
         device = labels.device
 
         # Compute mask for relevant points

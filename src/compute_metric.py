@@ -45,10 +45,13 @@ def compute_metric(
         )
     elif metric == 'ff_vus_pr_gpu':
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        existence = False if existence.lower() == "none" else bool(existence)
+        slopes = 'function'
         ff_vus = VUSTorch(
             global_mask=global_mask,
             slope_size=slope_size, 
             step=step,
+            existence=existence,
             conf_matrix=conf_matrix,
             device=device,
         )
@@ -75,7 +78,6 @@ def compute_metric(
             with torch.no_grad():
                 if metric == 'ff_vus_pr_gpu':
                     label, score = torch.tensor(label, device=device, dtype=torch.uint8), torch.tensor(score, device=device, dtype=torch.float16)
-                    results[-1]['Slopes'], results[-1]['Existence'] = 'function', 'matrix'
 
                 (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute(label, score)
             results[-1].update(ff_vus_time_analysis)
@@ -112,15 +114,15 @@ def compute_metric_over_dataset(
 ):
     # Load dataset
     if dataset == 'tsb':
-        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='YAHOO', n_timeseries=10)
+        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='Daphnet', n_timeseries=10)
     elif 'synthetic' in  dataset:
         filenames, labels, scores = load_synthetic(dataset=dataset, testing=testing)
     else:
         raise ValueError(f"Wrong argument for dataset: {dataset}")
 
     if metric == 'all':
-        # metrics = ['ff_vus_pr', 'vus_pr']
-        metrics = ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'affiliation', 'range_auc_pr', 'vus_pr', 'rf']
+        metrics = ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'vus_pr']
+        # metrics = ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'affiliation', 'range_auc_pr', 'vus_pr', 'rf']
     else:
         metrics = [metric]
 
@@ -192,7 +194,7 @@ if __name__ == "__main__":
     parser.add_argument('--metric', type=str, required=True, choices=['ff_vus_pr', 'ff_vus_pr_gpu', 'vus_pr', 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'all'], 
                         help='Metric to compute (e.g., VUS, AUC-PR, etc.)')
     parser.add_argument('--global_mask', action='store_true', help='Use global mask for metric computation')
-    parser.add_argument('--slope_size', type=int, default=100, help='Number of slopes used for computation')
+    parser.add_argument('--slope_size', type=int, default=128, help='Number of slopes used for computation')
     parser.add_argument('--step', type=int, default=1, help='Step size between slopes')
     parser.add_argument('--slopes', type=str, choices=['precomputed', 'function'], default='precomputed',
                         help='Slope generation method')
