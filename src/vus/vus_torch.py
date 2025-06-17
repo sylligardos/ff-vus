@@ -91,8 +91,6 @@ class VUSTorch():
         TODO: There is still some error on MITDB two first time series, CPU version too
         """
         self.update_max_memory_tokens()
-        # label = label.to(torch.uint8) TODO: Is this correct?
-        # score = score.to(torch.float16)
         fp = tp = positives = anomalies_found = total_anomalies = time_sm = time_slopes = time_existence = time_confusion = time_pos = 0
 
         ((_), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates(label)
@@ -202,7 +200,7 @@ class VUSTorch():
         valid_splits = torch.nonzero(valid_splits_mask)[::step].squeeze(1)
 
         if valid_splits.numel() == 0 or n_splits < 1:
-            return torch.tensor([], device=self.device)
+            return torch.tensor([length], device=self.device)
 
         ideal_splits = torch.linspace(0, length - 1, steps=n_splits + 1, device=self.device)[1:-1]        
 
@@ -215,7 +213,8 @@ class VUSTorch():
         assert torch.all(label[selected_splits] != 1), "Some selected splits fall inside anomalies!"
         assert torch.all(safe_mask[selected_splits] == 0), "Some splits are too close to anomalies!"
 
-        return torch.cat((selected_splits, length[None]), dim=0)
+        total_splits = torch.cat((selected_splits, length[None]), dim=0)
+        return total_splits
     
     @time_it
     def get_score_mask(self, score, thresholds):
