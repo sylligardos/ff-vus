@@ -54,7 +54,7 @@ experiments = {
         "script_name": "src/compute_metric.py",
         "template": None,
         "args": {
-            "dataset": ['all_synthetic'], # + os.listdir(os.path.join('data', 'synthetic')),
+            "dataset": ['all_synthetic'],
             "metric": ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
             "slope_size": [0], # [0, 16, 32, 64, 128, 256],
             "step":  [1],
@@ -84,11 +84,35 @@ experiments = {
         },
         "rules": []
     },
+    "vus_buffer_comparison_tsb":{
+        "environment": "ffvus",
+        "script_name": "src/compute_metric.py",
+        "template": None,
+        "args": {
+            "dataset": ['tsb'],
+            "metric": ['ff_vus_pr_gpu', 'ff_vus_pr', 'vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
+            "slope_size": [0, 2, 4, 8, 16, 32, 64, 128, 256, 512], 
+            # "step":  [1],
+        },
+        "rules": [],
+    },
+    "vus_step_comparison_tsb": {
+        "environment": "ffvus",
+        "script_name": "src/compute_metric.py",
+        "template": None,
+        "args": {
+            "dataset": ['tsb'],
+            "metric": ['ff_vus_pr_gpu', 'ff_vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
+            "slope_size": [512], 
+            "step":  [1, 2, 4, 8, 16, 32, 64, 128, 256, 512],
+        },
+        "rules": [],
+    }
 }
 
 def create_shell_scripts():
     parent_dir = "scripts"
-    experiment_name = "allmetrics_defparams_syn"
+    experiment_name = "vus_step_comparison_tsb"
 
     logs_saving_dir = os.path.join("experiments", experiment_name)
     os.makedirs(logs_saving_dir, exist_ok=True)
