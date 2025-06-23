@@ -40,7 +40,7 @@ experiments = {
         "script_name": "src/generate_synthetic.py",
         "template": 'cleps_cpu',
         "args": {
-            "save_dir": [f"syn_{i}" for i in range(5)],
+            "save_dir": [f"syn_{i}" for i in range(10)],
         },
         "rules": []
     },

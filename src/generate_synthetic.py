@@ -14,6 +14,7 @@ from tqdm import tqdm
 import os
 import time
 from datetime import datetime
+import pandas as pd
 
 
 def generate_synthetic_labels(length=10000, n_anomalies=10, avg_anomaly_length=100):
@@ -90,88 +91,14 @@ def generate_score_from_labels(label, start_points, end_points, detection_prob=0
     return np.clip(score, 0, 1)
 
 
-def generate_synthetic(
-    n_timeseries=10,
-    ts_length=1000,
-    n_anomalies=10,
-    avg_anomaly_length=100,
-    file_type='npy',
-    testing=False
-):
-    # if n_anomalies * avg_anomaly_length > 0.6 * ts_length:
-    #     raise ValueError(f"The total anomaly ratio cannot be more than 60%, current {(((n_anomalies * avg_anomaly_length) / ts_length) * 100):.2f}%")
-
-    total_start = time.time()
-    dir_path = os.path.join("data", "synthetic", f"synthetic_length_{ts_length}_n_anomalies_{n_anomalies}_avg_anomaly_length_{avg_anomaly_length}")
-    os.makedirs(dir_path, exist_ok=True)
-    ts_template_name = f"syn_{ts_length}_{n_anomalies}_{avg_anomaly_length}"
-    times = np.zeros((n_timeseries))
-    
-    for i in tqdm(range(n_timeseries), desc="Generating labels", disable=True):
-        tic = time.time()
-        label, start_points, end_points = generate_synthetic_labels(length=ts_length, n_anomalies=n_anomalies, avg_anomaly_length=avg_anomaly_length)
-        score = generate_score_from_labels(label, start_points, end_points, detection_prob=0.9, lag_ratio=10, noise=0.03, false_positive_strength=0.05)
-        toc = time.time()
-
-        times[i] = toc - tic
-        ts_name = f"{ts_template_name}_{i}"
-        
-        # Uncomment if you want to see the generated labels and scores
-        if testing:
-            fig, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
-            ax[0].plot(label)
-            ax[1].plot(score)
-            fig.suptitle(ts_name)
-            plt.tight_layout()
-            plt.show()
-
-        if not testing:
-            file_path = os.path.join(dir_path, f"{ts_name}.npy")
-            if file_type == 'npy':
-                label = label.astype(np.int8)
-                score = np.round(score, 2).astype(np.float16)
-                array = np.vstack((label, score)).T
-                np.save(file_path, array)
-            elif file_type == 'csv':
-                np.savetxt(os.path.join(dir_path, f"{ts_name}.csv"), np.vstack((label, score)).T, fmt=["%d", "%.2f"], delimiter=",")
-            else:
-                raise ValueError(f"Uknown file type: {file_type}")
-
-    total_time = time.time() - total_start
-    total_time_min = total_time / 60
-
-    print("Data generation completed, parameters:")
-    print(f"- Number of time series: {n_timeseries}")
-    print(f"- Time series length: {ts_length}")
-    print(f"- Number of anomalies: {n_anomalies}")
-    print(f"- Average length of anomalies: {avg_anomaly_length}")
-    print(f"- Total generation time: {total_time:.2f} seconds ({total_time_min:.2f} min)")
-    print(f"- Saved at: {dir_path}")
-
-    # Save this info to file
-    if not testing:
-        date_str = "synthetic_data_generation"
-        info_dir = os.path.join("experiments", date_str, "info")
-        os.makedirs(info_dir, exist_ok=True)
-        info_path = os.path.join(info_dir, f"{ts_template_name}.csv")
-
-        with open(info_path, "w") as f:
-            f.write(f"date,{date_str}\n")
-            f.write(f"n_timeseries,{n_timeseries}\n")
-            f.write(f"ts_length,{ts_length}\n")
-            f.write(f"n_anomalies,{n_anomalies}\n")
-            f.write(f"avg_anomaly_length,{avg_anomaly_length}\n")
-            f.write(f"output_directory,{dir_path}\n")
-            f.write(f"total_generation_time_seconds,{total_time}\n")
-            f.write(f"total_generation_time_minutes,{total_time_min}\n")
-            # f.write(f"avg_generation_time_per_ts,{np.mean(times)}\n")
-
-
 def generate_synthetic_dataset(
     save_dir,
+    experiment_dir,
     visualize=False,
     testing=False,
 ):
+    tic = time.time()
+
     list_of_values = {
         'length': [2**i for i in range(10, 32)],
         'n_anomalies': [2**i for i in range(16)],
@@ -231,32 +158,136 @@ def generate_synthetic_dataset(
 
             if i > 10: break
 
+    if experiment_dir is not None:
+        saving_path = os.path.join('experiments', experiment_dir)
+        info_path = os.path.join(saving_path, 'info')
+        os.makedirs(info_path, exist_ok=True)
+
+        info_dict = {
+            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Experiment": experiment_dir,
+            "Number of time series": i,
+            "Save path": save_path,
+            "List of values": list_of_values,
+            "Baseline Values": baseline_values,
+            "Execution Time (s)": time.time() - tic
+        }
+        info_df = pd.DataFrame([info_dict])
+        info_df.to_csv(os.path.join(info_path, f"{save_dir}.csv"), index=False)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog='main',
         description='Generate synthetic labels and scores to evaluate time series anomaly detection metrics'
     )
-    # parser.add_argument('-t', '--n_timeseries', type=int, help='the number of synthetic pairs of labels and scores to produce')
-    # parser.add_argument('-l', '--ts_length', type=int, help='the length of the generated time series')
-    # parser.add_argument('-n', '--n_anomalies', type=int, help='the number of anomalies per label')
-    # parser.add_argument('-a', '--avg_anomaly_length', type=int, help='the average length of the induced anomalies')
-    # parser.add_argument('-f', '--file_type', type=str, choices=['npy', 'csv'], default='npy', help='Type of file to save the data')
     parser.add_argument('--visualize', action='store_true', help='Visualize the generated data')
     parser.add_argument('--testing', action='store_true', help='Run in testing mode (plots the data and does not save them)')
     parser.add_argument('--save_dir', type=str, default='syn_1', help='Directory to save the generated synthetic dataset')
+    parser.add_argument('--experiment', type=str, default=None, help='Directory to save experiment results and info')
     args = parser.parse_args()
 
-    # generate_synthetic(
-    #     n_timeseries=args.n_timeseries,
-    #     ts_length=args.ts_length,
-    #     n_anomalies=args.n_anomalies,
-    #     avg_anomaly_length=args.avg_anomaly_length,
-    #     file_type=args.file_type,
-    #     testing=args.testing
-    # )
     generate_synthetic_dataset(
         save_dir=args.save_dir,
         visualize=args.visualize,
-        testing=args.testing
+        testing=args.testing,
+        experiment_dir=args.experiment,
     )
+
+
+
+
+
+# --------- To delete ---------
+
+
+# def generate_synthetic(
+#     n_timeseries=10,
+#     ts_length=1000,
+#     n_anomalies=10,
+#     avg_anomaly_length=100,
+#     file_type='npy',
+#     testing=False
+# ):
+#     # if n_anomalies * avg_anomaly_length > 0.6 * ts_length:
+#     #     raise ValueError(f"The total anomaly ratio cannot be more than 60%, current {(((n_anomalies * avg_anomaly_length) / ts_length) * 100):.2f}%")
+
+#     total_start = time.time()
+#     dir_path = os.path.join("data", "synthetic", f"synthetic_length_{ts_length}_n_anomalies_{n_anomalies}_avg_anomaly_length_{avg_anomaly_length}")
+#     os.makedirs(dir_path, exist_ok=True)
+#     ts_template_name = f"syn_{ts_length}_{n_anomalies}_{avg_anomaly_length}"
+#     times = np.zeros((n_timeseries))
+    
+#     for i in tqdm(range(n_timeseries), desc="Generating labels", disable=True):
+#         tic = time.time()
+#         label, start_points, end_points = generate_synthetic_labels(length=ts_length, n_anomalies=n_anomalies, avg_anomaly_length=avg_anomaly_length)
+#         score = generate_score_from_labels(label, start_points, end_points, detection_prob=0.9, lag_ratio=10, noise=0.03, false_positive_strength=0.05)
+#         toc = time.time()
+
+#         times[i] = toc - tic
+#         ts_name = f"{ts_template_name}_{i}"
+        
+#         # Uncomment if you want to see the generated labels and scores
+#         if testing:
+#             fig, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
+#             ax[0].plot(label)
+#             ax[1].plot(score)
+#             fig.suptitle(ts_name)
+#             plt.tight_layout()
+#             plt.show()
+
+#         if not testing:
+#             file_path = os.path.join(dir_path, f"{ts_name}.npy")
+#             if file_type == 'npy':
+#                 label = label.astype(np.int8)
+#                 score = np.round(score, 2).astype(np.float16)
+#                 array = np.vstack((label, score)).T
+#                 np.save(file_path, array)
+#             elif file_type == 'csv':
+#                 np.savetxt(os.path.join(dir_path, f"{ts_name}.csv"), np.vstack((label, score)).T, fmt=["%d", "%.2f"], delimiter=",")
+#             else:
+#                 raise ValueError(f"Uknown file type: {file_type}")
+
+#     total_time = time.time() - total_start
+#     total_time_min = total_time / 60
+
+#     print("Data generation completed, parameters:")
+#     print(f"- Number of time series: {n_timeseries}")
+#     print(f"- Time series length: {ts_length}")
+#     print(f"- Number of anomalies: {n_anomalies}")
+#     print(f"- Average length of anomalies: {avg_anomaly_length}")
+#     print(f"- Total generation time: {total_time:.2f} seconds ({total_time_min:.2f} min)")
+#     print(f"- Saved at: {dir_path}")
+
+#     # Save this info to file
+#     if not testing:
+#         date_str = "synthetic_data_generation"
+#         info_dir = os.path.join("experiments", date_str, "info")
+#         os.makedirs(info_dir, exist_ok=True)
+#         info_path = os.path.join(info_dir, f"{ts_template_name}.csv")
+
+#         with open(info_path, "w") as f:
+#             f.write(f"date,{date_str}\n")
+#             f.write(f"n_timeseries,{n_timeseries}\n")
+#             f.write(f"ts_length,{ts_length}\n")
+#             f.write(f"n_anomalies,{n_anomalies}\n")
+#             f.write(f"avg_anomaly_length,{avg_anomaly_length}\n")
+#             f.write(f"output_directory,{dir_path}\n")
+#             f.write(f"total_generation_time_seconds,{total_time}\n")
+#             f.write(f"total_generation_time_minutes,{total_time_min}\n")
+#             # f.write(f"avg_generation_time_per_ts,{np.mean(times)}\n")
+
+# parser.add_argument('-t', '--n_timeseries', type=int, help='the number of synthetic pairs of labels and scores to produce')
+# parser.add_argument('-l', '--ts_length', type=int, help='the length of the generated time series')
+# parser.add_argument('-n', '--n_anomalies', type=int, help='the number of anomalies per label')
+# parser.add_argument('-a', '--avg_anomaly_length', type=int, help='the average length of the induced anomalies')
+# parser.add_argument('-f', '--file_type', type=str, choices=['npy', 'csv'], default='npy', help='Type of file to save the data')
+
+# generate_synthetic(
+#     n_timeseries=args.n_timeseries,
+#     ts_length=args.ts_length,
+#     n_anomalies=args.n_anomalies,
+#     avg_anomaly_length=args.avg_anomaly_length,
+#     file_type=args.file_type,
+#     testing=args.testing
+# )
