@@ -21,18 +21,28 @@ def natural_keys(text):
     return [ atoi(c) for c in re.split(r'(\d+)', text) ]
 
 experiments = {
+    # "synthetic_data_generation": {
+    #     "job_name": "synthetic",
+    #     "environment": "ffvus",
+    #     "script_name": "src/generate_synthetic.py",
+    #     "template": 'cleps_cpu',
+    #     "args": {
+    #         "n_timeseries": [10],
+    #         "ts_length": [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000],
+    #         "n_anomalies": [3, 5, 10, 50, 100],
+    #         "avg_anomaly_length": [1, 10, 100, 1_000, 10_000],
+    #     },
+    #     "rules": ["True if n_anomalies * avg_anomaly_length <= 0.2 * ts_length else False"]
+    # },
     "synthetic_data_generation": {
         "job_name": "synthetic",
         "environment": "ffvus",
         "script_name": "src/generate_synthetic.py",
         "template": 'cleps_cpu',
         "args": {
-            "n_timeseries": [10],
-            "ts_length": [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000],
-            "n_anomalies": [3, 5, 10, 50, 100],
-            "avg_anomaly_length": [1, 10, 100, 1_000, 10_000],
+            "save_dir": [f"syn_{i}" for i in range(5)],
         },
-        "rules": ["True if n_anomalies * avg_anomaly_length <= 0.2 * ts_length else False"]
+        "rules": []
     },
     "vus_ffvus_auc_0": {
         "environment": "ffvus",
@@ -112,7 +122,7 @@ experiments = {
 
 def create_shell_scripts():
     parent_dir = "scripts"
-    experiment_name = "vus_step_comparison_tsb"
+    experiment_name = "synthetic_data_generation"
 
     logs_saving_dir = os.path.join("experiments", experiment_name)
     os.makedirs(logs_saving_dir, exist_ok=True)
