@@ -19,10 +19,8 @@ from utils.utils import analyze_label, natural_keys, load_synthetic, load_tsb
 
 
 def compute_metric(
-        filenames,
-        labels, 
-        scores, 
         metric,
+        data, 
         global_mask=True, 
         slope_size=None, 
         step=None, 
@@ -34,7 +32,7 @@ def compute_metric(
     metric_name = metric.replace('_', '-').upper()
     results = []
     
-    if metric == 'ff_vus_pr':
+    if metric == 'ff_vus':
         ff_vus = VUSNumpy(
             global_mask=global_mask,
             slope_size=slope_size, 
@@ -43,7 +41,7 @@ def compute_metric(
             existence=existence,
             conf_matrix=conf_matrix,
         )
-    elif metric == 'ff_vus_pr_gpu':
+    elif metric == 'ff_vus_gpu':
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         existence = False if existence.lower() == "none" else bool(existence)
         slopes = 'function'
@@ -56,7 +54,7 @@ def compute_metric(
             device=device,
         )
 
-    for filename, label, score in tqdm(zip(filenames, labels, scores), desc=f'Computing {metric}', total=len(labels)):
+    for filename, label, score in tqdm(data, desc=f'Computing {metric}'):
         length, n_anomalies, anomalies_avg_length = analyze_label(label)
         results.append({
             "Time series": filename,
@@ -65,7 +63,7 @@ def compute_metric(
             "Anomalies average length": float(anomalies_avg_length),
         })
 
-        if metric == 'ff_vus_pr' or metric == 'ff_vus_pr_gpu': 
+        if metric == 'ff_vus' or metric == 'ff_vus_gpu': 
             results[-1].update({
                 'Slope size': slope_size,
                 'Step': step,
@@ -76,17 +74,17 @@ def compute_metric(
             })
 
             with torch.no_grad():
-                if metric == 'ff_vus_pr_gpu':
+                if metric == 'ff_vus_gpu':
                     label, score = torch.tensor(label, device=device, dtype=torch.uint8), torch.tensor(score, device=device, dtype=torch.float16)
 
                 (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute(label, score)
             results[-1].update(ff_vus_time_analysis)
         else:
-            if metric == 'range_auc_pr' or metric == 'vus_pr':
+            if metric == 'range_auc' or metric == 'vus':
                 results[-1].update({
                     'Slope size': slope_size
                 })
-            if metric == 'vus_pr':
+            if metric == 'vus':
                 results[-1].update({
                     'Existence': True if existence != 'None' else False
                 })
@@ -101,28 +99,30 @@ def compute_metric(
     return pd.DataFrame(results)
 
 def compute_metric_over_dataset(
-        dataset,
-        metric,
-        global_mask=True,
-        slope_size=100,
-        step=1,
-        slopes='precomputed',
-        existence='optimized',
-        conf_matrix='dynamic',
-        testing=False,
-        experiment_dir=None,
+    dataset,
+    metric,
+    global_mask=True,
+    slope_size=100,
+    step=1,
+    slopes='precomputed',
+    existence='optimized',
+    conf_matrix='dynamic',
+    testing=False,
+    experiment_dir=None,
 ):
+
     # Load dataset
     if dataset == 'tsb':
         filenames, labels, scores, _ = load_tsb(testing=testing, dataset='Daphnet', n_timeseries=10)
-    elif 'synthetic' in  dataset:
-        filenames, labels, scores = load_synthetic(dataset=dataset, testing=testing)
+    elif 'syn_' in  dataset:
+        iterator = True
+        data = load_synthetic(dataset=dataset, testing=testing, iterator=iterator)
     else:
         raise ValueError(f"Wrong argument for dataset: {dataset}")
 
     if metric == 'all':
-        metrics = ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'vus_pr']
-        # metrics = ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'affiliation', 'range_auc_pr', 'vus_pr', 'rf']
+        metrics = ['ff_vus_gpu', 'auc', 'ff_vus', 'vus']
+        # metrics = ['ff_vus_gpu', 'auc', 'ff_vus', 'affiliation', 'range_auc', 'vus', 'rf']
     else:
         metrics = [metric]
 
@@ -133,13 +133,13 @@ def compute_metric_over_dataset(
     
     for metric in metrics:
         for slope_size in slope_sizes:
-            df = compute_metric(filenames, labels, scores, metric, global_mask, slope_size, step, slopes, existence, conf_matrix)
+            df = compute_metric(metric, data, global_mask, slope_size, step, slopes, existence, conf_matrix)
             
             # Generate saving path and results file name
             filename = f"{dataset}_{metric.replace('_', '-').upper()}"
-            if metric in ['ff_vus_pr', 'ff_vus_pr_gpu', 'range_auc_pr', 'vus_pr']:
+            if metric in ['ff_vus', 'ff_vus_gpu', 'range_auc', 'vus']:
                 filename += f"_{slope_size}"
-            if metric in ['ff_vus_pr', 'ff_vus_pr_gpu']:
+            if metric in ['ff_vus', 'ff_vus_gpu']:
                 filename += f"_{step}_{conf_matrix}_{'globalmask' if global_mask else 'noglobalmask'}_{slopes}_{existence}"
             filename += ".csv"
 
@@ -179,7 +179,7 @@ def compute_metric_over_dataset(
                     "Time": df.iloc[:, -1].sum(),
                 }])
                 info_df.to_csv(os.path.join(info_path, filename), index=False)
-            if metric in ['auc_pr', 'affiliation', 'rf']:
+            if metric in ['auc', 'affiliation', 'rf']:
                 break
 
     return df
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument('--dataset', type=str, required=True, help='Path or name of the dataset')
-    parser.add_argument('--metric', type=str, required=True, choices=['ff_vus_pr', 'ff_vus_pr_gpu', 'vus_pr', 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'all'], 
+    parser.add_argument('--metric', type=str, required=True, choices=['ff_vus', 'ff_vus_gpu', 'vus', 'rf', 'affiliation', 'range_auc', 'auc', 'all'], 
                         help='Metric to compute (e.g., VUS, AUC-PR, etc.)')
     parser.add_argument('--global_mask', action='store_true', help='Use global mask for metric computation')
     parser.add_argument('--slope_size', type=int, default=128, help='Number of slopes used for computation')
@@ -209,7 +209,8 @@ if __name__ == "__main__":
 
     if args.dataset == 'all_synthetic':
         synthetic_dir = os.path.join('data', 'synthetic')
-        datasets = [x for x in os.listdir(synthetic_dir) if not '10000000000' in x]
+        datasets = os.listdir(synthetic_dir)
+        datasets.sort()
     else:
         datasets = [args.dataset]
     datasets.sort(key=natural_keys)

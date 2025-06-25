@@ -47,29 +47,41 @@ def load_tsb(testing=False, dataset='KDD21', n_timeseries=10):
 
     return filenames, labels, scores, detectors_selected
 
-def load_synthetic(dataset, testing=False):
+def load_synthetic(dataset, testing=False, iterator=False):
     # Load dataset
     dataset_path = os.path.join('data', 'synthetic', dataset)
-    csv_files = [x for x in os.listdir(dataset_path) if '.csv' in x or '.npy' in x]
+    files = [x for x in os.listdir(dataset_path)]
+    files.sort(key=natural_keys, reverse=False)
 
     labels = []
     scores = []
 
-    for file in tqdm(csv_files, desc="Loading synthetic"):
-        if '.csv' in file:
-            data = np.loadtxt(os.path.join(dataset_path, file), delimiter=",")
+    for file in tqdm(files, desc="Loading synthetic"):
+        data = np.load(os.path.join(dataset_path, file))
+        label = data['label']
+        score = data['score'].round(2)
+
+        # Plot label and score as subplots for quick inspection
+        # fig, axs = plt.subplots(2, 1, figsize=(10, 4), sharex=True)
+        # axs[0].plot(label, label='Label')
+        # axs[0].set_ylabel('Label')
+        # axs[0].legend()
+        # axs[1].plot(score, label='Score', color='orange')
+        # axs[1].set_ylabel('Score')
+        # axs[1].legend()
+        # plt.tight_layout()
+        # plt.show()
+        
+        if iterator:
+            yield (file, label, score) 
         else:
-            data = np.load(os.path.join(dataset_path, file))
-        label = data[:, 0]
-        score = data[:, 1]
-        labels.append(label)
-        scores.append(score)
-        if testing: break
+            labels.append(label)
+            scores.append(score)
 
-    labels = np.array(labels)
-    scores = np.array(scores).round(2)
+            if testing: break
 
-    return csv_files, labels, scores
+    if not iterator:
+        return zip(files, labels, scores)
 
 def time_it(func):
     """Wrapper to measure execution time of a function."""

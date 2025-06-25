@@ -66,7 +66,7 @@ python3 {}""",
 #SBATCH --error={}/logs/%x.log          # Error log
 #SBATCH --ntasks=1                      # Number of tasks
 #SBATCH --cpus-per-task=16              # Number of CPU cores per task
-#SBATCH --mem=64G                       # Memory per node
+#SBATCH --mem=128G                       # Memory per node
 #SBATCH --time=10:00:00                  # Time limit hrs:min:sec
 
 # Activate the conda environment
@@ -83,7 +83,7 @@ python3 {}""",
 #SBATCH --error={}/logs/%x.log          # Error log
 #SBATCH --ntasks=1                      # Number of tasks
 #SBATCH --cpus-per-task=16              # Number of CPU cores per task
-#SBATCH --mem=64G                       # Memory per node
+#SBATCH --mem=128G                       # Memory per node
 #SBATCH --partition=gpu                 # Partition name (gpu for GPU jobs)
 #SBATCH --gres=gpu:h100:1               # Number of GPUs (1 in this case)
 #SBATCH --time=10:00:00                  # Time limit hrs:min:sec
