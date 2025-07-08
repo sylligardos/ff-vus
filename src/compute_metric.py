@@ -113,7 +113,7 @@ def compute_metric_over_dataset(
 
     # Load dataset
     if dataset == 'tsb':
-        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='Daphnet', n_timeseries=100)
+        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='YAHOO', n_timeseries=10)
         data = zip(filenames, labels, scores)
     elif 'syn_' in  dataset:
         iterator = True
@@ -220,7 +220,7 @@ if __name__ == "__main__":
         compute_metric_over_dataset(
             dataset=dataset,
             metric=args.metric,
-            global_mask=False, # args.global_mask,
+            global_mask=True, # args.global_mask,
             slope_size=args.slope_size,
             step=args.step,
             slopes=args.slopes,

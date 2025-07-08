@@ -26,13 +26,12 @@ import numpy as np
 def evaluate_ffvus_random(testing, experiment_dir=None):
     tic = time.time()
     dataloader = Dataloader(raw_data_path='data/raw')
-    datasets = ['Daphnet'] if testing else dataloader.get_dataset_names()
+    datasets = ['YAHOO'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        labels = labels[:1000]
-        filenames = filenames[:1000]
-
+        labels = labels[:10]
+        filenames = filenames[:10]
     else:
         zipped = list(zip(labels, filenames))
         sampled = np.random.choice(len(zipped), size=50, replace=False)
@@ -46,7 +45,7 @@ def evaluate_ffvus_random(testing, experiment_dir=None):
         raise ValueError(f'Size of scores and labels is not the same, scores: {len(scores)} labels: {len(labels)}')
 
     results = []
-    slope_size = 100 if testing else np.random.randint(low=1, high=256)
+    slope_size = 128 if testing else np.random.randint(low=1, high=256)
     step = 1
     zita = (1 / math.sqrt(2))
     global_mask = True if testing else np.random.choice([True, False])
@@ -128,7 +127,7 @@ def evaluate_ffvus_random(testing, experiment_dir=None):
         curr_result.update(ff_auc_time_analysis)
 
         # VUS-PR
-        vus_pr, vus_time = sylli_get_metrics(label, score, 'vus_pr', slope_size)
+        vus_pr, vus_time = sylli_get_metrics(label, score, 'vus', slope_size)
         curr_result.update({
             'VUS-PR': vus_pr,
             'VUS-PR time': vus_time,
@@ -196,6 +195,7 @@ def evaluate_ffvus_random(testing, experiment_dir=None):
     print(f"VUS-PR - FF-VUS-PR: average dif.: {df['VUS-PR - FF-VUS-PR'].mean()}, max dif.: {df['VUS-PR - FF-VUS-PR'].max()}, avg speed up: {df['VUS-PR Speed up'].mean()}")
     print(f"AUC-PR - FF-AUC-PR-GPU: average dif.: {df['AUC-PR - FF-AUC-PR-GPU'].mean()}, max dif.: {df['AUC-PR - FF-AUC-PR-GPU'].max()}, avg slow down: {df['AUC-PR-GPU Slow down'].mean()}")
     print(f"VUS-PR - FF-VUS-PR-GPU: average dif.: {df['VUS-PR - FF-VUS-PR-GPU'].mean()}, max dif.: {df['VUS-PR - FF-VUS-PR-GPU'].max()}, avg speed up: {df['VUS-PR-GPU Speed up'].mean()}")
+    print(df['FF-VUS-PR'])
 
     if experiment_dir is not None:    
         saving_path = os.path.join('experiments', experiment_dir)
