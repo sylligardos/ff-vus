@@ -26,7 +26,8 @@ def compute_metric(
         step=None, 
         slopes=None, 
         existence=None, 
-        conf_matrix=None, 
+        conf_matrix=None,
+        save_path=None,
 ):
     # Compute metric
     metric_name = metric.replace('_', '-').upper()
@@ -56,15 +57,15 @@ def compute_metric(
 
     for filename, label, score in tqdm(data, desc=f'Computing {metric}'):
         length, n_anomalies, anomalies_avg_length = analyze_label(label)
-        results.append({
+        curr_result = {
             "Time series": filename,
             "Length": length,
             "Number of anomalies": n_anomalies,
             "Anomalies average length": float(anomalies_avg_length),
-        })
+        }
 
         if metric == 'ff_vus' or metric == 'ff_vus_gpu': 
-            results[-1].update({
+            curr_result.update({
                 'Slope size': slope_size,
                 'Step': step,
                 'Global mask': global_mask,
@@ -78,23 +79,30 @@ def compute_metric(
                     label, score = torch.tensor(label, device=device, dtype=torch.uint8), torch.tensor(score, device=device, dtype=torch.float16)
 
                 (metric_value, ff_vus_time_analysis), metric_time = ff_vus.compute(label, score)
-            results[-1].update(ff_vus_time_analysis)
+            curr_result.update(ff_vus_time_analysis)
         else:
             if metric == 'range_auc' or metric == 'vus':
-                results[-1].update({
+                curr_result.update({
                     'Slope size': slope_size
                 })
             if metric == 'vus':
-                results[-1].update({
+                curr_result.update({
                     'Existence': True if existence != 'None' else False
                 })
             metric_value, metric_time = sylli_get_metrics(label, score, metric, slope_size, existence=True if existence != 'None' else False)
 
-        results[-1].update({
+        curr_result.update({
             'Metric': metric_name,
             'Metric value': float(metric_value),
             'Metric time': metric_time,
-        })   
+        })
+
+        if save_path is not None:
+            df_row = pd.DataFrame([curr_result])
+            write_header = not os.path.exists(save_path)
+            df_row.to_csv(save_path, mode='a', header=write_header, index=False)
+
+        results.append(curr_result)
         
     return pd.DataFrame(results)
 
@@ -131,35 +139,34 @@ def compute_metric_over_dataset(
         slope_sizes = [0, 16, 32, 64, 128, 256]
     else:
         slope_sizes = [slope_size]
+
+    if experiment_dir is not None:
+        save_path = os.path.join('experiments', experiment_dir)
+        results_path = os.path.join(save_path, 'results')
+        info_path = os.path.join(save_path, 'info')
+
+        os.makedirs(save_path, exist_ok=True)
+        os.makedirs(results_path, exist_ok=True)
+        os.makedirs(info_path, exist_ok=True)
     
     for metric in metrics:
         for slope_size in slope_sizes:
-            df = compute_metric(metric, data, global_mask, slope_size, step, slopes, existence, conf_matrix)
-            
-            # Generate saving path and results file name
-            filename = f"{dataset}_{metric.replace('_', '-').upper()}"
-            if metric in ['ff_vus', 'ff_vus_gpu', 'range_auc', 'vus']:
-                filename += f"_{slope_size}"
-            if metric in ['ff_vus', 'ff_vus_gpu']:
-                filename += f"_{step}_{conf_matrix}_{'globalmask' if global_mask else 'noglobalmask'}_{slopes}_{existence}"
-            filename += ".csv"
+            if experiment_dir is not None:
+                filename = f"{dataset}_{metric.replace('_', '-').upper()}"
+                if metric in ['ff_vus', 'ff_vus_gpu', 'range_auc', 'vus']:
+                    filename += f"_{slope_size}"
+                if metric in ['ff_vus', 'ff_vus_gpu']:
+                    filename += f"_{step}_{conf_matrix}_{'globalmask' if global_mask else 'noglobalmask'}_{slopes}_{existence}"
+                filename += ".csv"
+                curr_save_path = os.path.join(results_path, filename)
+            else:
+                curr_save_path = None
 
-            # Save the results
+            df = compute_metric(metric, data, global_mask, slope_size, step, slopes, existence, conf_matrix, curr_save_path)
             print(df)
             print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
             
             if experiment_dir is not None:
-                print(f"Saving results in: {filename}")
-                saving_path = os.path.join('experiments', experiment_dir)
-                results_path = os.path.join(saving_path, 'results')
-                info_path = os.path.join(saving_path, 'info')
-
-                os.makedirs(saving_path, exist_ok=True)
-                os.makedirs(results_path, exist_ok=True)
-                os.makedirs(info_path, exist_ok=True)
-
-                df.to_csv(os.path.join(results_path, filename))
-
                 info_df = pd.DataFrame([{
                     "GPU": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
                     "GPU Memory (GB)": round(torch.cuda.get_device_properties(0).total_memory / (1024 ** 3), 2) if torch.cuda.is_available() else None,
