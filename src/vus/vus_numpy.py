@@ -315,11 +315,23 @@ class VUSNumpy():
         return result
     
     @time_it
-    def add_slopes(self, label, start_points, end_points, pos):
+    def add_slopes(self, label, start_points, end_points, pos, plot=False):
         if self.add_slopes_mode == 'precomputed':
-            return self.add_slopes_precomputed(label, start_points, end_points)
+            slopes = self.add_slopes_precomputed(label, start_points, end_points)
         else:
-            return self.add_slopes_function(label, pos)
+            slopes = self.add_slopes_function(label, pos)
+
+        if plot:
+            fig, axs = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
+            axs[0].plot(label, label='Label')
+            axs[0].set_title('Label')
+            axs[0].legend()
+            sns.lineplot(ax=axs[1], data=slopes.T, legend=False)
+            axs[1].set_title('Slopes')
+            plt.tight_layout()
+            plt.show()
+
+        return slopes
     
     @time_it
     def compute_existence(self, labels, sm, score, thresholds, start_points, end_points, safe_mask):

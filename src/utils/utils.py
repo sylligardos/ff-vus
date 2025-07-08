@@ -20,7 +20,6 @@ from .dataloader import Dataloader
 
 
 def load_tsb(testing=False, dataset='KDD21', n_timeseries=10):
-    # Load the TSB-UAD benchmark
     dataloader = Dataloader(raw_data_path='data/raw')
     datasets = [dataset] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
@@ -36,7 +35,6 @@ def load_tsb(testing=False, dataset='KDD21', n_timeseries=10):
     if len(scores) != len(labels) or len(scores) != len(filenames):
         raise ValueError(f'Size of scores and labels is not the same, scores: {len(scores)}, labels: {len(labels)}, filenames: {len(filenames)}')
 
-    # Pick a random detector score for each label
     if testing:
         detectors_idx = np.zeros(len(labels)).astype(int)
     else:    
@@ -47,8 +45,7 @@ def load_tsb(testing=False, dataset='KDD21', n_timeseries=10):
 
     return filenames, labels, scores, detectors_selected
 
-def load_synthetic(dataset, testing=False, iterator=False):
-    # Load dataset
+def load_synthetic(dataset, testing=False, iterator=False, plot=False):
     dataset_path = os.path.join('data', 'synthetic', dataset)
     files = [x for x in os.listdir(dataset_path)]
     files.sort(key=natural_keys, reverse=False)
@@ -61,16 +58,17 @@ def load_synthetic(dataset, testing=False, iterator=False):
         label = data['label']
         score = data['score'].round(2)
 
-        # Plot label and score as subplots for quick inspection
-        # fig, axs = plt.subplots(2, 1, figsize=(10, 4), sharex=True)
-        # axs[0].plot(label, label='Label')
-        # axs[0].set_ylabel('Label')
-        # axs[0].legend()
-        # axs[1].plot(score, label='Score', color='orange')
-        # axs[1].set_ylabel('Score')
-        # axs[1].legend()
-        # plt.tight_layout()
-        # plt.show()
+        if plot:
+            # Plot label and score as subplots for quick inspection
+            fig, axs = plt.subplots(2, 1, figsize=(10, 4), sharex=True)
+            axs[0].plot(label, label='Label')
+            axs[0].set_ylabel('Label')
+            axs[0].legend()
+            axs[1].plot(score, label='Score', color='orange')
+            axs[1].set_ylabel('Score')
+            axs[1].legend()
+            plt.tight_layout()
+            plt.show()
         
         if iterator:
             yield (file, label, score) 
