@@ -100,7 +100,7 @@ class Scoreloader:
 		except Exception as e:
 			return None
 
-	def load_parallel(self, file_names):
+	def load_parallel(self, file_names, detectors=None):
 		"""
 		Load the scores for the specified files/timeseries in parallel.
 
@@ -110,7 +110,8 @@ class Scoreloader:
 		Returns:
 			tuple: A tuple containing the loaded scores and a list of indexes of failed to load time series.
 		"""
-		detectors = self.get_detector_names()
+		if detectors is None:
+			detectors = self.get_detector_names()
 		scores = []
 		idx_failed = []
 

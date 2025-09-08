@@ -132,7 +132,7 @@ class VUSNumpy():
         vus_pr, time_integral = self.auc(recall, precision)
 
         time_analysis = {
-            "Anomaly Coordinates time": time_anom_coord,
+            "Anomaly coordinates time": time_anom_coord,
             "Safe mask time": time_safe_mask,
             "Thresholds time": time_thresholds,
             "Score mask time": time_sm,
@@ -145,6 +145,36 @@ class VUSNumpy():
         }
 
         return vus_pr, time_analysis
+    
+    def visualize(self, label, score):
+        '''
+        Visualize: 
+            - FPs (red), TPs (green), FNs (blue), TNs (yellow), color should be stronger, the higher the threshold
+            - 2D plane of Precision - Recall over slopes
+            - Slope presense:
+                    - at which slope are anomalies identified (if at all). Answers the lag in anomaly detection or in labeling
+                    - essentially it is a histogram of slopes and TPs per slope, slopes away from the label should have little TPs
+                    which grow the closer you get to the label
+                    - Seperating left from right slopes will show if the lag is dragging or advancing
+            - Show statistics and metrics, time series characteristics
+
+            - Visual comparison of detectors row by row, summary of the above
+
+        '''
+        ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), _ = self.get_anomalies_coordinates(label)
+        safe_mask, _ = self.create_safe_mask(label, start_with_edges, end_with_edges)
+        thresholds, _ = self.get_unique_thresholds(score)
+
+        pos, _ = self.distance_from_anomaly(label, start_with_edges, end_with_edges, clip=True)
+        sm, _ = self.get_score_mask(score, thresholds)
+
+        labels, _ = self.add_slopes(label, start_no_edges, end_no_edges, pos)
+        existence, _ = self.compute_existence(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
+        (fp, fn, tp, positives, negatives, fpr), _ = self.compute_confusion_matrix(labels, sm)
+
+        (precision, recall), _ = self.precision_recall_curve(tp, fp, positives, existence)
+        vus_pr, _ = self.auc(recall, precision)
+
     
     @time_it
     def get_score_mask(self, score, thresholds):

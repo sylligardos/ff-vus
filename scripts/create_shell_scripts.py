@@ -44,12 +44,12 @@ experiments = {
         },
         "rules": []
     },
-    "vus_ffvus_auc_0": {
+    "vus_ffvus_auc_0_tsb": {
         "environment": "ffvus",
         "script_name": "src/compute_metric.py",
         "template": 'cleps_gpu',
         "args": {
-            "dataset": ['tsb'], # + os.listdir(os.path.join('data', 'synthetic')),
+            "dataset": ['tsb'],
             "metric": ['ff_vus_pr_gpu'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
             "slope_size": [0], # [0, 16, 32, 64, 128, 256],
             "step":  [1],
@@ -122,7 +122,7 @@ experiments = {
 
 def create_shell_scripts():
     parent_dir = "scripts"
-    experiment_name = "synthetic_data_generation"
+    experiment_name = "allmetrics_defparams_tsb"
 
     logs_saving_dir = os.path.join("experiments", experiment_name)
     os.makedirs(logs_saving_dir, exist_ok=True)

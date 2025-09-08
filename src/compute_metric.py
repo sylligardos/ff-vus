@@ -121,7 +121,7 @@ def compute_metric_over_dataset(
 
     # Load dataset
     if dataset == 'tsb':
-        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='YAHOO', n_timeseries=10)
+        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='MITDB', n_timeseries=10)
         data = zip(filenames, labels, scores)
     elif 'syn_' in  dataset:
         iterator = True
@@ -166,6 +166,11 @@ def compute_metric_over_dataset(
             print(df)
             print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
             
+            # import matplotlib.pyplot as plt
+            # time_anal_df = df[['Anomaly coordinates time', 'Safe mask time', 'Thresholds time', 'Score mask time', 'Position time', 'Slopes time', 'Existence time', 'Confusion matrix time', 'Precision recall curve time', 'Integral time']]
+            # time_anal_df.boxplot()
+            # plt.show()
+
             if experiment_dir is not None:
                 info_df = pd.DataFrame([{
                     "GPU": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
@@ -210,7 +215,7 @@ if __name__ == "__main__":
                         help='Existence computation method')
     parser.add_argument('--conf_matrix', type=str, choices=['trivial', 'dynamic', 'dynamic_plus'], default='dynamic_plus',
                         help='Type of confusion matrix computation')
-    parser.add_argument('--testing', action='store_true', help='Run in testing mode (limits the data for fast testing)')
+    parser.add_argument('--test', action='store_true', help='Run in testing mode (limits the data for fast testing)')
     parser.add_argument('--experiment', type=str, default=None, help='Directory to save experiment results and info')
 
     args = parser.parse_args()
@@ -233,6 +238,6 @@ if __name__ == "__main__":
             slopes=args.slopes,
             existence=args.existence,
             conf_matrix=args.conf_matrix,
-            testing=args.testing,
+            testing=args.test,
             experiment_dir=args.experiment,
         )

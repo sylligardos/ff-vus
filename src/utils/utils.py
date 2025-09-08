@@ -30,15 +30,12 @@ def load_tsb(testing=False, dataset='KDD21', n_timeseries=10):
 
     scoreloader = Scoreloader('data/scores')
     detectors = scoreloader.get_detector_names()
-    scores, idx_failed = scoreloader.load_parallel(filenames)
+    scores, idx_failed = scoreloader.load_parallel(filenames, detectors=detectors[0:1])
     labels, filenames = scoreloader.clean_failed_idx(labels, idx_failed), scoreloader.clean_failed_idx(filenames, idx_failed)
     if len(scores) != len(labels) or len(scores) != len(filenames):
         raise ValueError(f'Size of scores and labels is not the same, scores: {len(scores)}, labels: {len(labels)}, filenames: {len(filenames)}')
 
-    if testing:
-        detectors_idx = np.zeros(len(labels)).astype(int)
-    else:    
-        detectors_idx = np.random.randint(0, len(detectors), size=len(labels))
+    detectors_idx = np.zeros(len(labels)).astype(int)
     scores = [score[:, idx] for score, idx in zip(scores, detectors_idx)]
 
     detectors_selected = [detectors[idx] for idx in detectors_idx]

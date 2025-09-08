@@ -49,7 +49,7 @@ class VUSTorch():
         else:
             self.device = device
         if self.device == 'cpu':
-            print('You are using the GPU version of VUS on a CPU. If this is intended you can try the lighter numpy version!')
+            print('You are using the GPU version of VUS on a CPU. Performance will be limited!')
 
         self.slope_size, self.step, self.zita, self.global_mask = slope_size, step, zita, global_mask    
         self.existence = False if existence == 'None'else existence
@@ -161,7 +161,7 @@ class VUSTorch():
         vus_pr, time_integral = self.auc(recall, precision)
 
         time_analysis = {
-            "Anomalies coordinates time": time_anomalies_coord,
+            "Anomaly coordinates time": time_anomalies_coord,
             "Safe mask time": time_safe_mask,
             "Thresholds time": time_thresholds,
             "Score mask time": time_sm,
