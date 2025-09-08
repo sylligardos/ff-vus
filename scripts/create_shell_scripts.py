@@ -21,19 +21,6 @@ def natural_keys(text):
     return [ atoi(c) for c in re.split(r'(\d+)', text) ]
 
 experiments = {
-    # "synthetic_data_generation": {
-    #     "job_name": "synthetic",
-    #     "environment": "ffvus",
-    #     "script_name": "src/generate_synthetic.py",
-    #     "template": 'cleps_cpu',
-    #     "args": {
-    #         "n_timeseries": [10],
-    #         "ts_length": [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000],
-    #         "n_anomalies": [3, 5, 10, 50, 100],
-    #         "avg_anomaly_length": [1, 10, 100, 1_000, 10_000],
-    #     },
-    #     "rules": ["True if n_anomalies * avg_anomaly_length <= 0.2 * ts_length else False"]
-    # },
     "synthetic_data_generation": {
         "job_name": "synthetic",
         "environment": "ffvus",
@@ -44,43 +31,13 @@ experiments = {
         },
         "rules": []
     },
-    "vus_ffvus_auc_0": {
-        "environment": "ffvus",
-        "script_name": "src/compute_metric.py",
-        "template": 'cleps_gpu',
-        "args": {
-            "dataset": ['tsb'], # + os.listdir(os.path.join('data', 'synthetic')),
-            "metric": ['ff_vus_pr_gpu'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
-            "slope_size": [0], # [0, 16, 32, 64, 128, 256],
-            "step":  [1],
-            # "slopes": ['function'], #, 'function'
-            "existence": ['None'], #, 'matrix'
-            # "conf_matrix": ['dynamic_plus'],
-        },
-        "rules": []
-    },
-    "vus_ffvus_auc_0_syn": {
-        "environment": "ffvus",
-        "script_name": "src/compute_metric.py",
-        "template": None,
-        "args": {
-            "dataset": ['all_synthetic'],
-            "metric": ['ff_vus_pr_gpu', 'auc_pr', 'ff_vus_pr', 'vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
-            "slope_size": [0], # [0, 16, 32, 64, 128, 256],
-            "step":  [1],
-            # "slopes": ['function'], #, 'function'
-            "existence": ['None'], #, 'matrix'
-            # "conf_matrix": ['dynamic_plus'],
-        },
-        "rules": []
-    },
     "allmetrics_defparams_tsb": {
         "environment": "ffvus",
         "script_name": "src/compute_metric.py",
         "template": None,
         "args": {
             "dataset": ['tsb'],
-            "metric": ['ff_vus_pr', 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu']
+            "metric": ['ff_vus', 'rf', 'affiliation', 'range_auc', 'auc', 'vus', 'ff_vus_gpu']
         },
         "rules": []
     },
@@ -89,8 +46,8 @@ experiments = {
         "script_name": "src/compute_metric.py",
         "template": None,
         "args": {
-            "dataset": ['all_synthetic'],
-            "metric": ['ff_vus_pr', 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu']
+            "dataset": ['syn_0', 'syn_1', 'syn_2', 'syn_3', 'syn_4', 'syn_5', 'syn_6', 'syn_7', 'syn_8', 'syn_9'],
+            "metric": ['ff_vus', 'rf', 'affiliation', 'range_auc', 'auc', 'vus', 'ff_vus_gpu']
         },
         "rules": []
     },
@@ -100,9 +57,8 @@ experiments = {
         "template": None,
         "args": {
             "dataset": ['tsb'],
-            "metric": ['ff_vus_pr_gpu', 'ff_vus_pr', 'vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
+            "metric": ['ff_vus_gpu', 'ff_vus', 'vus'],
             "slope_size": [0, 2, 4, 8, 16, 32, 64, 128, 256, 512], 
-            # "step":  [1],
         },
         "rules": [],
     },
@@ -112,17 +68,42 @@ experiments = {
         "template": None,
         "args": {
             "dataset": ['tsb'],
-            "metric": ['ff_vus_pr_gpu', 'ff_vus_pr'], #, 'rf', 'affiliation', 'range_auc_pr', 'auc_pr', 'vus_pr', 'ff_vus_pr_gpu'
+            "metric": ['ff_vus_gpu', 'ff_vus'],
             "slope_size": [512], 
             "step":  [1, 2, 4, 8, 16, 32, 64, 128, 256, 512],
         },
         "rules": [],
-    }
+    },
+    "vus_ffvus_auc_0_tsb": {
+        "environment": "ffvus",
+        "script_name": "src/compute_metric.py",
+        "template": None,
+        "args": {
+            "dataset": ['tsb'],
+            "metric": ['ff_vus_gpu', 'auc', 'ff_vus', 'vus'],
+            "slope_size": [0],
+            "step":  [1],
+            "existence": ['None'],
+        },
+        "rules": []
+    },
+    "vus_ffvus_auc_0_syn": {
+        "environment": "ffvus",
+        "script_name": "src/compute_metric.py",
+        "template": None,
+        "args": {
+            "dataset": ['syn_0', 'syn_1', 'syn_2', 'syn_3', 'syn_4', 'syn_5', 'syn_6', 'syn_7', 'syn_8', 'syn_9'],
+            "metric": ['ff_vus_gpu', 'auc', 'ff_vus', 'vus'],
+            "slope_size": [0],
+            "step":  [1],
+            "existence": ['None'],
+        },
+        "rules": []
+    },
 }
 
-def create_shell_scripts():
+def create_shell_scripts(experiment_name):
     parent_dir = "scripts"
-    experiment_name = "synthetic_data_generation"
 
     logs_saving_dir = os.path.join("experiments", experiment_name)
     os.makedirs(logs_saving_dir, exist_ok=True)
@@ -181,4 +162,5 @@ def create_shell_scripts():
         
 
 if __name__ == "__main__":
-    create_shell_scripts()
+    for experiment in experiments.keys():
+        create_shell_scripts(experiment_name=experiment)
