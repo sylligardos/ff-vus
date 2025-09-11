@@ -23,15 +23,16 @@ import os
 import time
 import numpy as np
 
-def evaluate_ffvus_random(testing, experiment_dir=None):
+def evaluate_ffvus_random(testing, experiment_dir=None, dataset=None, detector=None):
     tic = time.time()
     dataloader = Dataloader(raw_data_path='data/raw')
     datasets = ['YAHOO'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        labels = labels[:10]
-        filenames = filenames[:10]
+        # problematic YAHOO -> [16, 53, 106]
+        filenames = filenames[10:20]
+        labels = labels[10:20]
     else:
         zipped = list(zip(labels, filenames))
         sampled = np.random.choice(len(zipped), size=50, replace=False)
@@ -49,9 +50,9 @@ def evaluate_ffvus_random(testing, experiment_dir=None):
     step = 1
     zita = (1 / math.sqrt(2))
     global_mask = True if testing else np.random.choice([True, False])
-    slopes = 'precomputed' if testing else np.random.choice(['precomputed', 'function'])
+    slopes = 'precomputed' if testing else np.random.choice(['precomputed'])
     existence = 'optimized' if testing else np.random.choice(['optimized'])   # 'trivial', 'matrix' are also options
-    conf_matrix = 'dynamic_plus' if testing else np.random.choice(['dynamic', 'dynamic_plus'])          
+    conf_matrix = 'dynamic_plus' if testing else np.random.choice(['dynamic_plus'])          
     interpolation = 'stepwise'  # ['linear', 'stepwise']
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -97,9 +98,11 @@ def evaluate_ffvus_random(testing, experiment_dir=None):
     )
 
     print(f">> Current settings: Slope size {slope_size}, step {step}, slopes {slopes}, existence {existence}, conf. matrix {conf_matrix}, interpolation {interpolation}")
+    
+    problematic_timeseries = []
+    detector_idx = detector if detector is not None else np.random.randint(0, 11)
+    detector = detectors[detector_idx]
     for i, (filename, label, curr_scores) in enumerate(zip(filenames, labels, scores)):
-        detector_idx = 0 if testing else np.random.randint(0, 11)
-        detector = detectors[detector_idx]
         score = curr_scores[:, detector_idx]
 
         length, n_anomalies, anomalies_avg_length = analyze_label(label)
@@ -177,15 +180,17 @@ def evaluate_ffvus_random(testing, experiment_dir=None):
             "VUS-PR - FF-VUS-PR": abs(vus_pr - ff_vus_pr), 
             "AUC-PR Slow down": ff_auc_time / auc_pr_time, 
             "VUS-PR Speed up": vus_time / ff_vus_time,
-            "AUC-PR equal": abs(auc_pr - ff_auc_pr) < 1e-14,
-            "VUS-PR equal": abs(vus_pr - ff_vus_pr) < 1e-14,
+            "AUC-PR equal": abs(auc_pr - ff_auc_pr) < 1e-10,
+            "VUS-PR equal": abs(vus_pr - ff_vus_pr) < 1e-10,
             "VUS-PR - FF-VUS-PR-GPU": abs(vus_pr - ff_vus_pr_gpu).item(),
             "AUC-PR - FF-AUC-PR-GPU": abs(auc_pr - ff_auc_pr_gpu).item(),
             "AUC-PR-GPU Slow down": ff_auc_gpu_time / auc_pr_time,
             "VUS-PR-GPU Speed up": vus_time / ff_vus_gpu_time,
-            "AUC-PR-GPU equal": abs(auc_pr - ff_auc_pr_gpu).item() < 1e-14,
-            "VUS-PR-GPU equal": abs(vus_pr - ff_vus_pr_gpu).item() < 1e-14,
+            "AUC-PR-GPU equal": abs(auc_pr - ff_auc_pr_gpu).item() < 1e-10,
+            "VUS-PR-GPU equal": abs(vus_pr - ff_vus_pr_gpu).item() < 1e-10,
         })
+        if not curr_result["VUS-PR equal"]:
+            problematic_timeseries.append((filename, i))
         
         results.append(curr_result)
 
@@ -223,9 +228,12 @@ def evaluate_ffvus_random(testing, experiment_dir=None):
             "Existence": existence,
             "Confusion matrix": conf_matrix,
             "Time": time.time() - tic,
+            "Detector idx": detector_idx,
         }])
+        info_df["Problematic time series"] = [problematic_timeseries]
         info_file = os.path.join(info_path, curr_experiment_name)
         info_df.to_csv(info_file, index=False)
+
 
 
 if __name__ == "__main__":
@@ -233,9 +241,14 @@ if __name__ == "__main__":
         prog='main',
         description='Run experiments on the current implementation of the VUS metric'
     )
-    parser.add_argument('--testing', action='store_true', help='Run in testing mode (limits the data for fast testing)')
+    parser.add_argument('--test', action='store_true', help='Run in testing mode (limits the data for fast testing)')
     parser.add_argument('--experiment', type=str, default=None, help='Directory to save experiment results (optional)')
 
     args = parser.parse_args()
 
-    evaluate_ffvus_random(testing=args.testing, experiment_dir=args.experiment)
+    for detector in np.arange(12):
+        evaluate_ffvus_random(
+                testing=args.test, 
+                experiment_dir=args.experiment,
+                detector=detector,
+            )

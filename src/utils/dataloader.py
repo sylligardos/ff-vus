@@ -111,6 +111,9 @@ class Dataloader:
 
 		files = self.check_split(files, split) if split else files
 		
+		if njobs is None:
+			njobs = min(32, os.cpu_count() + 4)  # Safe default
+
 		print(f'Selected dataset: {datasets}')
 		with Pool(njobs) as pool:
 			results = list(tqdm(pool.imap(self.load_timeseries, files), total=len(files), desc=f"Loading data"))

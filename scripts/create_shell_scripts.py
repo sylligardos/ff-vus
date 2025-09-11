@@ -104,7 +104,7 @@ experiments = {
 
 def create_shell_scripts(experiment_name):
     parent_dir = "scripts"
-    experiment_name = "allmetrics_defparams_tsb"
+    experiment_name = "allmetrics_defparams_syn"
 
     logs_saving_dir = os.path.join("experiments", experiment_name)
     os.makedirs(logs_saving_dir, exist_ok=True)

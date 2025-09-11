@@ -64,6 +64,11 @@ def compute_metric(
             "Anomalies average length": float(anomalies_avg_length),
         }
 
+        if label.shape != score.shape:
+            min_len = min(label.shape[0], score.shape[0])
+            label = label[:min_len]
+            score = score[:min_len]
+
         if metric == 'ff_vus' or metric == 'ff_vus_gpu': 
             curr_result.update({
                 'Slope size': slope_size,
@@ -121,7 +126,7 @@ def compute_metric_over_dataset(
 
     # Load dataset
     if dataset == 'tsb':
-        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='MITDB', n_timeseries=10)
+        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='SMD', n_timeseries=1000)
         data = zip(filenames, labels, scores)
     elif 'syn_' in  dataset:
         iterator = True
@@ -163,8 +168,9 @@ def compute_metric_over_dataset(
                 curr_save_path = None
 
             df = compute_metric(metric, data, global_mask, slope_size, step, slopes, existence, conf_matrix, curr_save_path)
-            print(df)
-            print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
+            if not df.empty:
+                print(df)
+                print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
             
             # import matplotlib.pyplot as plt
             # time_anal_df = df[['Anomaly coordinates time', 'Safe mask time', 'Thresholds time', 'Score mask time', 'Position time', 'Slopes time', 'Existence time', 'Confusion matrix time', 'Precision recall curve time', 'Integral time']]
