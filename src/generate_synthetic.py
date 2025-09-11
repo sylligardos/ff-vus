@@ -15,9 +15,10 @@ import os
 import time
 from datetime import datetime
 import pandas as pd
+from utils.utils import analyze_label
 
-
-def generate_synthetic_labels(length=10000, n_anomalies=10, avg_anomaly_length=100):
+# Check that the actual values are within 10% of the once we want. if not repeat
+def generate_synthetic_labels(length=10000, n_anomalies=10, avg_anomaly_length=100, tolerance=0.1, max_attempts=100):
     """
     Generate a binary label sequence (0 for normal, 1 for anomaly).
 
@@ -29,18 +30,31 @@ def generate_synthetic_labels(length=10000, n_anomalies=10, avg_anomaly_length=1
     Returns:
     - labels: np.array of shape (length,), binary values
     """
-    label = np.zeros(length, dtype=np.int8)
-    
-    anomalies_index = np.random.choice(length, size=n_anomalies, replace=False)
-    anomalies_length = np.abs(np.random.normal(loc=avg_anomaly_length, scale=avg_anomaly_length//4, size=n_anomalies)).astype(int)
+    attempts = 0
+    while attempts < max_attempts:
+        label = np.zeros(length, dtype=np.int8)
+        
+        anomalies_index = np.random.choice(length, size=n_anomalies, replace=False)
+        anomalies_length = np.abs(np.random.normal(loc=avg_anomaly_length, scale=avg_anomaly_length//50, size=n_anomalies)).astype(int)
 
-    start_points = anomalies_index - (anomalies_length // 2)
-    end_points = start_points + anomalies_length
-    for i, s, e in tqdm(zip(anomalies_index, start_points, end_points), total=len(start_points), desc="Generating the label", disable=True):
-        label[s: e] = 1
-    
-    return label, start_points, end_points
+        start_points = anomalies_index - (anomalies_length // 2)
+        end_points = start_points + anomalies_length
+        for i, s, e in tqdm(zip(anomalies_index, start_points, end_points), total=len(start_points), desc="Generating the label", disable=True):
+            label[s: e] = 1
 
+        actual_length, actual_n_anomalies, actual_avg_anomaly_length = analyze_label(label)
+        
+        n_anomalies_within_tolerance = abs(actual_n_anomalies - n_anomalies) <= tolerance * n_anomalies
+        avg_anomaly_length_within_tolerance = abs(actual_avg_anomaly_length - avg_anomaly_length) <= tolerance * avg_anomaly_length
+
+        if n_anomalies_within_tolerance and avg_anomaly_length_within_tolerance:
+            # print(attempts, actual_length, actual_n_anomalies, actual_avg_anomaly_length)
+            return label, start_points, end_points
+
+        attempts += 1
+
+    raise RuntimeError(f"Failed to generate labels within tolerance after {max_attempts} attempts.")
+    
 def generate_score_from_labels(label, start_points, end_points, detection_prob=0.9, lag_ratio=10, noise=0.03, false_positive_strength=0.05):
     """
     Simulate an anomaly score based on binary labels with possible detection errors.
@@ -100,14 +114,14 @@ def generate_synthetic_dataset(
     tic = time.time()
 
     list_of_values = {
-        'length': [2**i for i in range(10, 32)],
-        'n_anomalies': [2**i for i in range(16)],
-        'avg_anomaly_length': [2**i for i in range(16)],
+        'n_anomalies': [1, 5, 10, 20, 50] + list(range(100, 1001, 100)),
+        'avg_anomaly_length': [1, 5, 10, 20, 50] + list(range(100, 1001, 100)),
+        'length': [2**i for i in range(13, 32)],
     }
     baseline_values = {
         'length': 100_000,
         'n_anomalies': 10,
-        'avg_anomaly_length': 100,
+        'avg_anomaly_length': 10,
     }
 
     all_combinations = []
@@ -182,15 +196,15 @@ if __name__ == "__main__":
         description='Generate synthetic labels and scores to evaluate time series anomaly detection metrics'
     )
     parser.add_argument('--visualize', action='store_true', help='Visualize the generated data')
-    parser.add_argument('--testing', action='store_true', help='Run in testing mode (plots the data and does not save them)')
-    parser.add_argument('--save_dir', type=str, default='syn_1', help='Directory to save the generated synthetic dataset')
+    parser.add_argument('--test', action='store_true', help='Run in testing mode (plots the data and does not save them)')
+    parser.add_argument('--save_dir', type=str, default='test', help='Directory to save the generated synthetic dataset')
     parser.add_argument('--experiment', type=str, default=None, help='Directory to save experiment results and info')
     args = parser.parse_args()
 
     generate_synthetic_dataset(
         save_dir=args.save_dir,
         visualize=args.visualize,
-        testing=args.testing,
+        testing=args.test,
         experiment_dir=args.experiment,
     )
 
