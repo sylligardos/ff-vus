@@ -95,7 +95,7 @@ class VUSTorch():
 
         ((_), (start_with_edges, end_with_edges)), time_anomalies_coord = self.get_anomalies_coordinates(label)
         safe_mask, time_safe_mask = self.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=self.global_mask)
-        (thresholds, _), time_thresholds = self.get_unique_thresholds(score)
+        (thresholds), time_thresholds = self.get_unique_thresholds(score)
 
         # Apply global mask
         if self.global_mask:
@@ -222,7 +222,25 @@ class VUSTorch():
     
     @time_it
     def get_unique_thresholds(self, score):
-        return torch.sort(torch.unique(score), descending=True)
+        chunks = self.process_in_chunks(score)
+
+        unique_values = []
+        for chunk in chunks:
+            chunk_unique = torch.unique(chunk)
+            unique_values.append(chunk_unique)
+
+        all_unique = torch.cat(unique_values)
+        thresholds = torch.unique(all_unique)
+
+        sorted_thresholds, _ = torch.sort(thresholds, descending=True)
+
+        sorted_thresholds_whole, _ = torch.sort(torch.unique(score), descending=True)
+
+        # Check that the two threshold arrays are equal
+        if not torch.equal(sorted_thresholds, sorted_thresholds_whole):
+            raise ValueError("Threshold arrays are not equal: sorted_thresholds and sorted_thresholds_whole differ.")
+
+        return sorted_thresholds
     
     @time_it
     def get_anomalies_coordinates(self, label: torch.Tensor):
