@@ -23,30 +23,43 @@ import os
 import time
 import numpy as np
 
-def evaluate_ffvus_random(testing, experiment_dir=None, dataset=None, detector=None):
+def evaluate_ffvus_random(testing, experiment_dir=None, dataset=None, detector_selected=None):
     tic = time.time()
     dataloader = Dataloader(raw_data_path='data/raw')
     datasets = ['YAHOO'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
+    # idx_inter = []
+    # for i, file in enumerate(filenames):
+    #     if file in ["YAHOO/YahooA3Benchmark-TS12_data.out", "YAHOO/YahooA4Benchmark-TS36_data.out", "YAHOO/YahooA3Benchmark-TS44_data.out", "YAHOO/YahooA3Benchmark-TS49_data.out"]:
+    #         idx_inter.append(i)
+    # print(idx_inter)
+    # exit()
     if testing:
-        # problematic YAHOO -> [16, 53, 106]
-        filenames = filenames[10:20]
-        labels = labels[10:20]
+        # problematic YAHOO -> [16, 53, 106] for CLEPS
+        # problematic YAHOO -> [22, 28, 273, 353] for GPU
+        # filenames = [filenames[x] for x in [16]]
+        # labels = [labels[x] for x in [16]]
+        # filenames = filenames[0:10]
+        # labels = labels[0:10]
+        filenames = filenames
+        labels = labels
     else:
-        zipped = list(zip(labels, filenames))
-        sampled = np.random.choice(len(zipped), size=50, replace=False)
-        labels, filenames = zip(*[zipped[i] for i in sampled])
+        # zipped = list(zip(labels, filenames))
+        # sampled = np.random.choice(len(zipped), size=50, replace=False)
+        # labels, filenames = zip(*[zipped[i] for i in sampled])
+        filenames = filenames
+        labels = labels
 
     scoreloader = Scoreloader('data/scores')
-    detectors = scoreloader.get_detector_names()
+    detectors = scoreloader.get_detector_names()    # ['AE', 'CNN', 'HBOS', 'IFOREST', 'IFOREST1', 'LOF', 'LSTM', 'MP', 'NORMA', 'OCSVM', 'PCA', 'POLY']
     scores, idx_failed = scoreloader.load_parallel(filenames)
     labels, filenames = scoreloader.clean_failed_idx(labels, idx_failed), scoreloader.clean_failed_idx(filenames, idx_failed)
     if len(scores) != len(labels):
         raise ValueError(f'Size of scores and labels is not the same, scores: {len(scores)} labels: {len(labels)}')
 
     results = []
-    slope_size = 128 if testing else np.random.randint(low=1, high=256)
+    slope_size = 128 #if testing else np.random.randint(low=1, high=256)
     step = 1
     zita = (1 / math.sqrt(2))
     global_mask = True if testing else np.random.choice([True, False])
@@ -96,13 +109,12 @@ def evaluate_ffvus_random(testing, experiment_dir=None, dataset=None, detector=N
         conf_matrix=conf_matrix,
         device=device,
     )
-
     print(f">> Current settings: Slope size {slope_size}, step {step}, slopes {slopes}, existence {existence}, conf. matrix {conf_matrix}, interpolation {interpolation}")
     
     problematic_timeseries = []
-    detector_idx = detector if detector is not None else np.random.randint(0, 11)
-    detector = detectors[detector_idx]
     for i, (filename, label, curr_scores) in enumerate(zip(filenames, labels, scores)):
+        detector_idx = detector_selected if detector_selected is not None else np.random.randint(0, 11)
+        detector = detectors[detector_idx]
         score = curr_scores[:, detector_idx]
 
         length, n_anomalies, anomalies_avg_length = analyze_label(label)
@@ -190,7 +202,7 @@ def evaluate_ffvus_random(testing, experiment_dir=None, dataset=None, detector=N
             "VUS-PR-GPU equal": abs(vus_pr - ff_vus_pr_gpu).item() < 1e-10,
         })
         if not curr_result["VUS-PR equal"]:
-            problematic_timeseries.append((filename, i))
+            problematic_timeseries.append((filename, i if testing else sampled[i]))
         
         results.append(curr_result)
 
@@ -243,12 +255,12 @@ if __name__ == "__main__":
     )
     parser.add_argument('--test', action='store_true', help='Run in testing mode (limits the data for fast testing)')
     parser.add_argument('--experiment', type=str, default=None, help='Directory to save experiment results (optional)')
+    parser.add_argument('--detector', type=int, default=None, help='Index of detector to use (optional)')
 
     args = parser.parse_args()
-
-    for detector in np.arange(12):
-        evaluate_ffvus_random(
-                testing=args.test, 
-                experiment_dir=args.experiment,
-                detector=detector,
-            )
+    
+    evaluate_ffvus_random(
+        testing=args.test, 
+        experiment_dir=args.experiment,
+        detector_selected=args.detector,
+    )

@@ -127,6 +127,9 @@ class VUSNumpy():
             time_anom_coord += extra_time_anom_coord
             time_safe_mask += extra_time_safe_mask
             time_sm += extra_time_sm
+        # print('---------------------')
+        # print(existence)
+
 
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
         vus_pr, time_integral = self.auc(recall, precision)
@@ -423,8 +426,8 @@ class VUSNumpy():
         anomalies_overlaps = np.zeros(start_points.shape, dtype=int)
         for k, (start, end) in enumerate(zip(start_points[1:], end_points[:-1])):
             distance = start - end
-            overlap = (2 * self.slope_size) - distance        
-            if overlap > 0:
+            overlap = (2 * self.slope_size) - distance
+            if overlap >= 0:
                 index = math.ceil((self.slope_size - (overlap // 2)) / self.step)
                 n_anomalies[index:] -= 1
                 anomalies_overlaps[k] = index
@@ -465,6 +468,22 @@ class VUSNumpy():
                 curr_existence[overlap_index:] = np.logical_and(curr_existence[overlap_index:], np.logical_not(prev_existence[overlap_index:]))
             existence += curr_existence
             prev_existence = np.logical_or(tmp_existence, curr_existence)
+
+        # print(existence[-1].astype(int))    
+        # problem is on last slope (n_slopes, n_thresholds)
+        # There is an overlap at the very final slope that this approach cant catch
+        # Does this happen whenever two anomalies first touch ?
+
+        # fig, axs = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
+        # axs[0].plot(labels[-2], color='blue', label='Label')
+        # axs[0].set_title('Label')
+        # axs[0].legend()
+        # axs[1].plot(score, color='orange', label='Score')
+        # axs[1].set_title('Score')
+        # axs[1].legend()
+        # plt.tight_layout()
+        # plt.show()
+        # exit()
 
         return existence / n_anomalies[:, None]
 
