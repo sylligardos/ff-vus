@@ -185,6 +185,7 @@ def evaluate_ffvus_random(testing, experiment_dir=None, dataset=None, detector_s
             f"Len:{label.shape[0]} | "
             f"#Anom:{n_anomalies} | "
             f"Avg len:{anomalies_avg_length:.2f}"
+            f" | Detector: {detector}"
         )
         
         curr_result.update({

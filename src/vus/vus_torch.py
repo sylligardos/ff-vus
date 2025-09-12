@@ -175,10 +175,14 @@ class VUSTorch():
 
         return vus_pr, time_analysis
 
-    def process_in_chunks(self, data):
+    def process_in_chunks(self, data, divider=100):
+        '''
+        Divider is used to simulate the number of thresholds, however some times
+        we process single dimension arrays, as in unique_thresholds
+        '''
         if len(data) == 0:
             return
-        data_mem_size = data.nbytes * 100  # Around 100 thresholds 
+        data_mem_size = data.nbytes * divider  # Around 100 thresholds 
         n_splits = np.ceil(data_mem_size / self.max_memory_tokens).astype(int)
         chunk_size = len(data) // n_splits
 
@@ -221,24 +225,22 @@ class VUSTorch():
         return score >= thresholds[:, None]
     
     @time_it
-    def get_unique_thresholds(self, score):
-        chunks = self.process_in_chunks(score)
+    def get_unique_thresholds(self, score, compute_in_chunks=True):
+        if not compute_in_chunks:
+            sorted_thresholds, _ = torch.sort(torch.unique(score), descending=True)
+        else:
+            chunks = self.process_in_chunks(score, divider=5)
+            all_unique = torch.empty(0, device=score.device, dtype=score.dtype)
+            for chunk in chunks:
+                chunk_unique = torch.unique(chunk)
+                all_unique = torch.cat((all_unique, chunk_unique))
+            thresholds = torch.unique(all_unique)
+            sorted_thresholds, _ = torch.sort(thresholds, descending=True)
 
-        unique_values = []
-        for chunk in chunks:
-            chunk_unique = torch.unique(chunk)
-            unique_values.append(chunk_unique)
-
-        all_unique = torch.cat(unique_values)
-        thresholds = torch.unique(all_unique)
-
-        sorted_thresholds, _ = torch.sort(thresholds, descending=True)
-
-        sorted_thresholds_whole, _ = torch.sort(torch.unique(score), descending=True)
-
-        # Check that the two threshold arrays are equal
-        if not torch.equal(sorted_thresholds, sorted_thresholds_whole):
-            raise ValueError("Threshold arrays are not equal: sorted_thresholds and sorted_thresholds_whole differ.")
+            # Check that the two threshold arrays are equal
+            # sorted_thresholds_whole, _ = torch.sort(torch.unique(score), descending=True)
+            # if not torch.equal(sorted_thresholds, sorted_thresholds_whole):
+            #     raise ValueError("Threshold arrays are not equal: sorted_thresholds and sorted_thresholds_whole differ.")
 
         return sorted_thresholds
     
