@@ -29,21 +29,24 @@ def evaluate_ffvus_random(testing, experiment_dir=None, dataset=None, detector_s
     datasets = ['YAHOO'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
-    # idx_inter = []
-    # for i, file in enumerate(filenames):
-    #     if file in ["YAHOO/YahooA3Benchmark-TS12_data.out", "YAHOO/YahooA4Benchmark-TS36_data.out", "YAHOO/YahooA3Benchmark-TS44_data.out", "YAHOO/YahooA3Benchmark-TS49_data.out"]:
-    #         idx_inter.append(i)
-    # print(idx_inter)
-    # exit()
+    problematic_timeseries_indexes = [
+        'YAHOO/YahooA4Benchmark-TS99_data.out',
+        'YAHOO/YahooA3Benchmark-TS75_data.out',
+        # 'Dodgers/101-freeway-traffic.test.out',
+        # 'SVDB/871.test.csv@1.out',
+        # 'SVDB/871.test.csv@2.out'
+    ]
+    idx_inter = []
+    for i, file in enumerate(filenames):
+        if file in problematic_timeseries_indexes:
+            idx_inter.append(i)
     if testing:
-        # problematic YAHOO -> [16, 53, 106] for CLEPS
-        # problematic YAHOO -> [22, 28, 273, 353] for GPU
-        # filenames = [filenames[x] for x in [16]]
-        # labels = [labels[x] for x in [16]]
+        filenames = [filenames[x] for x in idx_inter]
+        labels = [labels[x] for x in idx_inter]
         # filenames = filenames[0:10]
         # labels = labels[0:10]
-        filenames = filenames
-        labels = labels
+        # filenames = filenames
+        # labels = labels
     else:
         # zipped = list(zip(labels, filenames))
         # sampled = np.random.choice(len(zipped), size=50, replace=False)

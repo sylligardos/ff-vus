@@ -69,6 +69,17 @@ class VUSTorch():
         else:
             raise ValueError(f"Unknown argument for conf_matrix: {conf_matrix}. 'conf_matrix' should be one of {conf_matrix_args}")
 
+        self.warmup()
+
+    def warmup(self):
+        '''
+        Torch first computation is slower than the rest because of JIT, etc. This function does a dummy computation
+        to remove this overhead from the first actual computation.
+        '''
+        label = torch.randint(0, 2, (20,), dtype=torch.int8, device=self.device)
+        score = torch.rand(20, device=self.device)
+        self.compute(label, score)
+
 
     def update_max_memory_tokens(self, divider=50):
         """

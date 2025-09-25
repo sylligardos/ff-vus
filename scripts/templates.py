@@ -13,7 +13,7 @@ sh_templates = {
 #SBATCH --error={}/logs/%x.log      # Error log
 #SBATCH --ntasks=1                  # Number of tasks
 #SBATCH --cpus-per-task=32          # Number of CPU cores per task
-#SBATCH --time=10:00:00              # Time limit
+#SBATCH --time=10:00:00             # Time limit
 #SBATCH -A gpr@cpu                  # Specify the account to use
 
 # go into the submission directory 
@@ -39,8 +39,8 @@ python3 {}""",
 #SBATCH --error={}/logs/%x.log      # Error log
 #SBATCH --ntasks=1                  # Number of tasks
 #SBATCH --cpus-per-task=16          # Number of CPU cores per task
-#SBATCH --time=10:00:00              # Time limit (2 hours in this case)
-#SBATCH -A gpr@v100                 # Specify the account to use (CPU account)
+#SBATCH --time=10:00:00             # Time limit
+#SBATCH -A gpr@v100                 # Specify the account to use
 #SBATCH --gres=gpu:1                # Request 1 GPU
 
 # go into the submission directory 

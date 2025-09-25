@@ -1,4 +1,5 @@
 # Project-specific ignores
+run_interactive.sh
 /data
 /models
 /experiments

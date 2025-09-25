@@ -24,7 +24,20 @@ def load_tsb(testing=False, dataset='KDD21', n_timeseries=10):
     datasets = [dataset] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
+    problematic_timeseries_indexes = [
+        'YAHOO/YahooA4Benchmark-TS99_data.out',
+        'YAHOO/YahooA3Benchmark-TS75_data.out',
+        # 'Dodgers/101-freeway-traffic.test.out',
+        # 'SVDB/871.test.csv@1.out',
+        # 'SVDB/871.test.csv@2.out'
+    ]
+    idx_inter = []
+    for i, file in enumerate(filenames):
+        if file in problematic_timeseries_indexes:
+            idx_inter.append(i)
     if testing:
+        filenames = [filenames[x] for x in idx_inter]
+        labels = [labels[x] for x in idx_inter]
         labels = labels[:n_timeseries]
         filenames = filenames[:n_timeseries]
 
