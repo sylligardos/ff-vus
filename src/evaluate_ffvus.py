@@ -29,40 +29,30 @@ def evaluate_ffvus_random(testing, experiment_dir=None, dataset=None, detector_s
     datasets = ['YAHOO'] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
-    problematic_timeseries_indexes = [
-        'YAHOO/YahooA4Benchmark-TS99_data.out',
-        'YAHOO/YahooA3Benchmark-TS75_data.out',
-        # 'Dodgers/101-freeway-traffic.test.out',
-        # 'SVDB/871.test.csv@1.out',
-        # 'SVDB/871.test.csv@2.out'
-    ]
-    idx_inter = []
-    for i, file in enumerate(filenames):
-        if file in problematic_timeseries_indexes:
-            idx_inter.append(i)
     if testing:
-        filenames = [filenames[x] for x in idx_inter]
-        labels = [labels[x] for x in idx_inter]
-        # filenames = filenames[0:10]
-        # labels = labels[0:10]
-        # filenames = filenames
-        # labels = labels
+        # problematic_timeseries_indexes = []
+        # idx_inter = []
+        # for i, file in enumerate(filenames):
+        #     if file in problematic_timeseries_indexes:
+        #         idx_inter.append(i)
+        # filenames = [filenames[x] for x in idx_inter]
+        # labels = [labels[x] for x in idx_inter]
+        filenames = filenames[0:10]
+        labels = labels[0:10]
     else:
-        # zipped = list(zip(labels, filenames))
-        # sampled = np.random.choice(len(zipped), size=50, replace=False)
-        # labels, filenames = zip(*[zipped[i] for i in sampled])
-        filenames = filenames
-        labels = labels
-
+        zipped = list(zip(labels, filenames))
+        sampled = np.random.choice(len(zipped), size=50, replace=False)
+        labels, filenames = zip(*[zipped[i] for i in sampled])
+        
     scoreloader = Scoreloader('data/scores')
-    detectors = scoreloader.get_detector_names()    # ['AE', 'CNN', 'HBOS', 'IFOREST', 'IFOREST1', 'LOF', 'LSTM', 'MP', 'NORMA', 'OCSVM', 'PCA', 'POLY']
+    detectors = scoreloader.get_detector_names()
     scores, idx_failed = scoreloader.load_parallel(filenames)
     labels, filenames = scoreloader.clean_failed_idx(labels, idx_failed), scoreloader.clean_failed_idx(filenames, idx_failed)
     if len(scores) != len(labels):
         raise ValueError(f'Size of scores and labels is not the same, scores: {len(scores)} labels: {len(labels)}')
 
     results = []
-    slope_size = 128 #if testing else np.random.randint(low=1, high=256)
+    slope_size = 128
     step = 1
     zita = (1 / math.sqrt(2))
     global_mask = True if testing else np.random.choice([True, False])
