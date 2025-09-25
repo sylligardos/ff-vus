@@ -66,8 +66,9 @@ python3 {}""",
 #SBATCH --error={}/logs/%x.log          # Error log
 #SBATCH --ntasks=1                      # Number of tasks
 #SBATCH --cpus-per-task=16              # Number of CPU cores per task
-#SBATCH --mem=128G                       # Memory per node
-#SBATCH --time=10:00:00                  # Time limit hrs:min:sec
+#SBATCH --mem=128G                      # Memory per node
+#SBATCH --constraint=amd
+#SBATCH --time=10:00:00                 # Time limit hrs:min:sec
 
 # Activate the conda environment
 source ~/miniconda3/etc/profile.d/conda.sh

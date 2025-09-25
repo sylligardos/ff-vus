@@ -29,7 +29,6 @@ def compute_metric(
         conf_matrix=None,
         save_path=None,
 ):
-    # Compute metric
     metric_name = metric.replace('_', '-').upper()
     results = []
     
@@ -135,8 +134,7 @@ def compute_metric_over_dataset(
         raise ValueError(f"Wrong argument for dataset: {dataset}")
 
     if metric == 'all':
-        metrics = ['ff_vus_gpu', 'auc', 'ff_vus', 'vus']
-        # metrics = ['ff_vus_gpu', 'auc', 'ff_vus', 'affiliation', 'range_auc', 'vus', 'rf']
+        metrics = ['ff_vus_gpu', 'auc', 'ff_vus', 'affiliation', 'range_auc', 'vus', 'rf']
     else:
         metrics = [metric]
 
@@ -172,11 +170,6 @@ def compute_metric_over_dataset(
                 print(df)
                 print(f"Average computation time: {df['Metric time'].mean():.3f} seconds")
             
-            # import matplotlib.pyplot as plt
-            # time_anal_df = df[['Anomaly coordinates time', 'Safe mask time', 'Thresholds time', 'Score mask time', 'Position time', 'Slopes time', 'Existence time', 'Confusion matrix time', 'Precision recall curve time', 'Integral time']]
-            # time_anal_df.boxplot()
-            # plt.show()
-
             if experiment_dir is not None:
                 info_df = pd.DataFrame([{
                     "GPU": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
