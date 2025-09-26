@@ -45,20 +45,28 @@ class SylliGraph:
         # Default seaborn style
         sns.set_style("whitegrid")
 
-    def _format_plot(self, title=None, xlabel=None, ylabel=None, rotate_xticks=True):
+    def _format_plot(self, title=None, xlabel=None, ylabel=None, rotate_xticks=True, axis=None):
         """
         Helper function to apply consistent styling to plots.
         """
-        if title is not None:
-            plt.title(title, fontsize=15)
-        if xlabel is not None:
-            plt.xlabel(xlabel, fontsize=14)
-        if ylabel is not None:
-            plt.ylabel(ylabel, fontsize=14)
-
-        if rotate_xticks:
-            plt.xticks(rotation=15, fontsize=11)
-        plt.tight_layout()
+        if axis is None:
+            if title is not None:
+                plt.title(title, fontsize=15)
+            if xlabel is not None:
+                plt.xlabel(xlabel, fontsize=14)
+            if ylabel is not None:
+                plt.ylabel(ylabel, fontsize=14)
+            if rotate_xticks:
+                plt.xticks(rotation=15, fontsize=11)
+        else:
+            if title is not None:
+                axis.set_title(title, fontsize=15)
+            if xlabel is not None:
+                axis.set_xlabel(xlabel, fontsize=14)
+            if ylabel is not None:
+                axis.set_ylabel(ylabel, fontsize=14)
+            if rotate_xticks:
+                axis.tick_params(axis='x', rotation=15, labelsize=11)
 
     def _finalize_plot(self, filename):
         """
@@ -74,6 +82,7 @@ class SylliGraph:
             plt.savefig(f"{save_path}.pdf", bbox_inches='tight')
             # print(f"Plot saved to {save_path}")
         
+        plt.tight_layout()
         plt.show()
 
     def boxplot_exec_time(self, df, order=None, filename=None, title=None, xlabel=None, ylabel=None):
@@ -85,33 +94,54 @@ class SylliGraph:
         # df['Metric'] = df['Metric'].map(self.formal_names).fillna(df['Metric'])
         df = df.replace(self.formal_names)
 
-        sns.boxplot(
+        medianprops = dict(linestyle='-', linewidth=2, color='white')
+        meanprops = dict(
+            marker='X',
+            markerfacecolor='white',
+            markeredgecolor='black',
+            markersize=6
+        )
+
+        axis = sns.boxplot(
             y='Metric time',
             x='Metric',
             hue='Metric',
             data=df,
             showfliers=False,
             log_scale=True,
+            showmeans=False,
+            meanprops=meanprops,
+            medianprops=medianprops,
             palette=self.color_palette,
             order=order,
             saturation=1,
         )
+        # sns.violinplot(y='Metric time', x='Metric', hue='Metric', data=df, log_scale=True, palette=self.color_palette, order=order, saturation=1)
 
         self._format_plot(
             title=title,
             xlabel=xlabel,
             ylabel=ylabel
         )
+        
+        # Remove borders around the boxes but keep whiskers and caps
+        for j, patch in enumerate(axis.patches):
+            facecolor = patch.get_facecolor()
+            if all([x == 1 for x in facecolor]):
+                patch.set_facecolor((1, 1, 1, 0.0))  # alpha = 0.0
+                patch.set_edgecolor((0, 0, 0, 1.0))  # fully opaque border
+                patch.set_linewidth(1.5)
+
+                axis.lines[j * 6 + 4].set_color('black')    # 6 lines per box and usually the median is the 4th
+                axis.lines[j * 6 + 4].set_linewidth(1.5)
+            else:
+                patch.set_edgecolor(facecolor)
+                patch.set_linewidth(0.5)
 
         # Save the figure
-        if filename is not None:
-            save_path = os.path.join(self.save_fig_path, filename)
-            plt.savefig(f"{save_path}.svg", bbox_inches='tight')
-            plt.savefig(f"{save_path}.pdf", bbox_inches='tight')
-        plt.show()
-
-        print(f"Saved boxplot to {save_path}")
-
+        plt.grid(axis='x')
+        self._finalize_plot(filename)
+        
 
     def boxplot_error(self, df, order=None, filename=None, title=None, xlabel=None, ylabel=None):
         plt.figure(figsize=(5, 3))
