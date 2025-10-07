@@ -12,6 +12,7 @@ import math
 from skimage.util.shape import view_as_windows as viewW
 import matplotlib.pyplot as plt
 import seaborn as sns
+from mpl_toolkits.mplot3d import Axes3D
 
 
 class VUSNumpy():
@@ -127,9 +128,6 @@ class VUSNumpy():
             time_anom_coord += extra_time_anom_coord
             time_safe_mask += extra_time_safe_mask
             time_sm += extra_time_sm
-        # print('---------------------')
-        # print(existence)
-
 
         (precision, recall), time_pr_rec = self.precision_recall_curve(tp, fp, positives, existence)
         vus_pr, time_integral = self.auc(recall, precision)
@@ -355,28 +353,74 @@ class VUSNumpy():
             slopes = self.add_slopes_function(label, pos)
 
         if plot:
-            fig, axs = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
-            axs[0].plot(label, label='Label')
-            axs[0].set_title('Label')
-            axs[0].legend()
-            sns.lineplot(ax=axs[1], data=slopes.T, legend=False)
-            axs[1].set_title('Slopes')
+            sns.set_style("whitegrid")
+            fig, ax = plt.subplots(2, 1, figsize=(6, 4), sharex=True, gridspec_kw={'height_ratios': [1, 1.2]})
+
+            plot_start = 13150 + 25
+            plot_end = 13490 - 200
+
+            sns.lineplot(label[plot_start:plot_end], ax=ax[0], linewidth=2.5, color='#000000')
+            ax[0].set_title('Label')
+            ax[0].grid(alpha=0.2)
+
+            ax[1].annotate(f'Z', xy=(111, self.zita),
+                        xytext=(115, self.zita + 0.15),
+                        arrowprops=dict(arrowstyle="->", color='gray', lw=1.5),
+                        color='gray', fontsize=15, weight='bold')
+            ax[1].axhline(y=self.zita, xmin=0, xmax=1000, color='gray', linestyle='-.', zorder=0, alpha=.5)
+            sns.lineplot(ax=ax[1], data=slopes.T[plot_start:plot_end], linewidth=1.5, palette='rocket', legend=False)
+            ax[1].set_title('Label with buffers')
+            ax[1].set_xlabel('Time')
+            ax[1].grid(alpha=0.2)
+
             plt.tight_layout()
+            plt.savefig("experiments/figures/label_buffer_example.svg", bbox_inches='tight')
+            plt.savefig("experiments/figures/label_buffer_example.pdf", bbox_inches='tight')
             plt.show()
 
         return slopes
     
     @time_it
-    def compute_existence(self, labels, sm, score, thresholds, start_points, end_points, safe_mask):
+    def compute_existence(self, labels, sm, score, thresholds, start_points, end_points, safe_mask, plot=False):
         if self.existence_mode == 'optimized':
-            return self.existence_optimized(labels, score, thresholds, start_points, end_points)
-        if self.existence_mode == 'matrix':
-            return self.existence_matrix(labels, sm, safe_mask)
-        if self.existence_mode == 'None':
-            # return self.no_existence(thresholds)
-            return None
-        if self.existence_mode == 'trivial':
-            return self.existence_trivial(labels, sm, thresholds, start_points, end_points)
+            existence = self.existence_optimized(labels, score, thresholds, start_points, end_points)
+        elif self.existence_mode == 'matrix':
+            existence = self.existence_matrix(labels, sm, safe_mask)
+        elif self.existence_mode == 'trivial':
+            existence = self.existence_trivial(labels, sm, thresholds, start_points, end_points)
+        elif self.existence_mode == 'None':
+            # existence = self.no_existence(thresholds)
+            existence = None
+        
+        if plot:
+            fig, ax = plt.subplots(1, 1, figsize=(6, 4)) #, gridspec_kw={'height_ratios': [2, 1, 1]}
+            ax = [ax]
+
+            # Existence heatmap
+            sns.heatmap(existence, cmap="rocket", ax=ax[0], annot=False)
+            ax[0].set_xlabel("Thresholds")
+            ax[0].set_ylabel("Slopes")
+            ax[0].invert_yaxis()
+            ax[0].grid(alpha=0)
+
+            # # Slopes visualization
+            # sns.lineplot(labels.T, palette="rocket", legend=False, ax=ax[1])
+            # ax[1].set_title("Slopes")
+            # ax[1].set_xlabel("Time")
+            # ax[1].set_ylabel("Slopes")
+            
+            # # Score visualization
+            # ax[2].plot(score, color='orange')
+            # ax[2].set_title("Score")
+            # ax[2].set_xlabel("Time")
+            # ax[2].set_ylabel("Score")
+
+            plt.tight_layout()
+            plt.savefig("experiments/figures/existence_heatmap.svg", bbox_inches='tight')
+            plt.savefig("experiments/figures/existence_heatmap.pdf", bbox_inches='tight')
+            plt.show()
+
+        return existence
     
     def no_existence(self, thresholds):
         return np.ones((self.n_slopes, len(thresholds)))
@@ -599,13 +643,38 @@ class VUSNumpy():
         return false_negatives, true_positives, positives
     
     @time_it
-    def precision_recall_curve(self, tp, fp, positives, existence):
+    def precision_recall_curve(self, tp, fp, positives, existence, plot=True):
         ones, zeros = np.ones(self.n_slopes)[:, np.newaxis], np.zeros(self.n_slopes)[:, np.newaxis]
         precision = np.hstack((ones, (tp / (tp + fp))))
         recall = np.hstack((zeros, (tp / positives)))
         recall[recall > 1] = 1
         if existence is not None:
             recall[:, 1:] = np.multiply(recall[:, 1:], existence)
+
+        if plot:
+            # Plot 3D Precision-Recall surface
+
+            fig = plt.figure(figsize=(6, 4))
+            ax = fig.add_subplot(111, projection='3d')
+
+            # Remove the very first values (column 0) which are always 1
+            P = precision[:, 1:]
+            R = recall[:, 1:]
+            n_slopes, n_thresholds = P.shape
+            slope_idx = np.arange(n_slopes)
+            threshold_idx = np.arange(n_thresholds)
+
+            S, T = np.meshgrid(slope_idx, threshold_idx, indexing='ij')
+
+            ax.plot_surface(S, T, P, cmap='rocket', alpha=0.8)
+            ax.set_xlabel('Buffer')
+            ax.set_ylabel('Threshold')
+            ax.set_zlabel('Precision@Recall')
+            
+            plt.tight_layout()
+            plt.savefig("experiments/figures/precision_recall_surface.svg", bbox_inches='tight')
+            plt.savefig("experiments/figures/precision_recall_surface.pdf", bbox_inches='tight')
+            plt.show()
 
         return precision, recall
     

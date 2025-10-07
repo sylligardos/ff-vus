@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
+from matplotlib.gridspec import GridSpec
 
 
 class SylliGraph:
@@ -22,7 +23,7 @@ class SylliGraph:
 
         # Consistent color palette
         self.color_palette = {
-            'FF-VUS (L: 128)': '#eee13f',          # Good
+            'FF-VUS (L: 128)': '#c8b400',          # Good
             'FF-VUS-GPU (L: 128)': '#40da70',     # Very Good
             'AUC': '#f1a73f',                # Secondary competitor
             'VUS (L: 128)': '#b02a41',            # Main competitor
@@ -76,13 +77,13 @@ class SylliGraph:
             filename (str or None): Base filename (without extension) to save the plot.
             description (str): Text description for logging.
         """
+        plt.tight_layout()
         if filename is not None:
             save_path = os.path.join(self.save_fig_path, filename)
             plt.savefig(f"{save_path}.svg", bbox_inches='tight')
             plt.savefig(f"{save_path}.pdf", bbox_inches='tight')
             # print(f"Plot saved to {save_path}")
         
-        plt.tight_layout()
         plt.show()
 
     def boxplot_exec_time(self, df, order=None, filename=None, title=None, xlabel=None, ylabel=None):
@@ -123,6 +124,17 @@ class SylliGraph:
             xlabel=xlabel,
             ylabel=ylabel
         )
+
+        # Highlight the 2nd and 3rd xtick_label in bold
+        xticklabels = axis.get_xticklabels()
+        for idx in range(len(axis.get_xticklabels())):
+            if 'FF-' in xticklabels[idx].get_text():
+                xticklabels[idx].set_fontweight('bold')
+            if '(L:' in xticklabels[idx].get_text(): 
+                new_text = xticklabels[idx].get_text().replace('(', '\n(')
+                xticklabels[idx].set_text(new_text)
+        axis.set_xticks(axis.get_xticks())
+        axis.set_xticklabels([label.get_text() for label in xticklabels])
         
         # Remove borders around the boxes but keep whiskers and caps
         for j, patch in enumerate(axis.patches):
@@ -152,7 +164,7 @@ class SylliGraph:
             df, 
             showfliers=True, 
             fill=True, 
-            flierprops={"marker": "."}, 
+            flierprops={"marker": "o"}, 
             width=.5, 
             palette=self.color_palette, 
             saturation=1
@@ -189,17 +201,18 @@ class SylliGraph:
         attributes = ["Length", "Number of anomalies", "Anomalies average length"]
 
         # Define subplot grid layout
+        fig = plt.figure(figsize=(10, 5))
+        gs = GridSpec(2, 2, figure=fig, height_ratios=[3, 2])
         attr_axis = {
-            "Length": (2, 1, 1), 
-            "Number of anomalies": (2, 2, 3), 
-            "Anomalies average length": (2, 2, 4),
+            "Length": gs[0, :],
+            "Number of anomalies": gs[1, 0],
+            "Anomalies average length": gs[1, 1],
         }
+        abc_numbered = {0: 'a', 1: 'b', 2: 'c'}
 
-        fig = plt.figure(figsize=(10, 6))
         legend_axis = None
-
         for i, attribute in enumerate(attributes):
-            axis = fig.add_subplot(*attr_axis[attribute])
+            axis = fig.add_subplot(attr_axis[attribute])
             curr_df = analysis_dfs[i]
 
             # Main plot
@@ -214,26 +227,71 @@ class SylliGraph:
                 style='Metric',
                 dashes=False,
                 linewidth=2,
+                zorder=1,
             )
 
             # Axis formatting
             self._format_plot(
                 title=None,
-                xlabel=attribute,
-                ylabel="Execution time (seconds)" if i != 2 else "",
+                xlabel=f"({abc_numbered[i]}) {attribute}",
+                ylabel="",
                 rotate_xticks=False
             )
             axis.set_yscale('log')
             axis.grid(axis='both', alpha=0.5)
 
             if attribute == "Length":
-                axis.set_xscale('log', base=2)
+                axis.set_xscale('log', base=10)
 
             # Keep legend only for the first plot
             if i != 0:
                 axis.get_legend().remove()
             else:
                 legend_axis = axis
+                # for line in axis.lines:
+                #     if 'FF-VUS' in line.get_label():
+                #         line.set_zorder(10)
+                #         line.set_linewidth(3)
+                # plt.draw()
+
+                # 1 million points (~1 hour of ECG)
+                x_val = 1e6
+                y_val = 1000
+                curr_color = '#707070'
+                axis.annotate("~1 hour of ECG",
+                            xy=(x_val, y_val), xytext=(x_val / 2, y_val),
+                            ha='right', va='center', fontsize=10, color=curr_color,
+                            arrowprops=dict(arrowstyle="->", color=curr_color, alpha=0.5))
+                axis.axvline(x=x_val, ymin=0, ymax=20000, color=curr_color, linestyle='--', alpha=0.5)
+
+                # 100 million points (~5 days of ECG)
+                x_val = 1e8
+                y_val = 0.003
+                axis.annotate("~5 days of ECG",
+                            xy=(x_val, y_val), xytext=(x_val / 2, y_val),
+                            ha='right', va='center', fontsize=10, color=curr_color,
+                            arrowprops=dict(arrowstyle="->", color=curr_color, alpha=0.5))
+                axis.axvline(x=x_val, ymin=0, ymax=20000, color=curr_color, linestyle='--', alpha=0.5)
+
+                # 1 billion points (~3 months of ECG)
+                x_val = 2**31
+                axis.annotate("~3 months of ECG",
+                            xy=(x_val, y_val), xytext=(x_val / 2, y_val),
+                            ha='right', va='center', fontsize=10, color=curr_color,
+                            arrowprops=dict(arrowstyle="->", color=curr_color, alpha=0.5))
+                axis.axvline(x=x_val, ymin=0, ymax=20000, color=curr_color, linestyle='--', alpha=0.5)
+
+
+
+        
+        fig.text(
+            -0.01,  # x position
+            0.57,   # y position
+            "Execution time (seconds; log scale)",
+            va='center',
+            rotation='vertical',
+            fontsize=14
+        )
 
         # --- Shared legend ---
         if legend_axis:
@@ -243,10 +301,10 @@ class SylliGraph:
                 handles,
                 labels,
                 loc='upper center',
-                bbox_to_anchor=(0.5, 1.02),
+                bbox_to_anchor=(0.5, 1.04),
                 ncol=len(labels),
                 frameon=False,
-                fontsize='small'
+                fontsize='medium'
             )
         self._finalize_plot(filename)
 
