@@ -147,34 +147,34 @@ class VUSNumpy():
 
         return vus_pr, time_analysis
     
-    def visualize(self, label, score):
-        '''
-        Visualize: 
-            - FPs (red), TPs (green), FNs (blue), TNs (yellow), color should be stronger, the higher the threshold
-            - 2D plane of Precision - Recall over slopes
-            - Slope presense:
-                    - at which slope are anomalies identified (if at all). Answers the lag in anomaly detection or in labeling
-                    - essentially it is a histogram of slopes and TPs per slope, slopes away from the label should have little TPs
-                    which grow the closer you get to the label
-                    - Seperating left from right slopes will show if the lag is dragging or advancing
-            - Show statistics and metrics, time series characteristics
+    # def visualize(self, label, score):
+    #     '''
+    #     Visualize: 
+    #         - FPs (red), TPs (green), FNs (blue), TNs (yellow), color should be stronger, the higher the threshold
+    #         - 2D plane of Precision - Recall over slopes
+    #         - Slope presense:
+    #                 - at which slope are anomalies identified (if at all). Answers the lag in anomaly detection or in labeling
+    #                 - essentially it is a histogram of slopes and TPs per slope, slopes away from the label should have little TPs
+    #                 which grow the closer you get to the label
+    #                 - Seperating left from right slopes will show if the lag is dragging or advancing
+    #         - Show statistics and metrics, time series characteristics
 
-            - Visual comparison of detectors row by row, summary of the above
+    #         - Visual comparison of detectors row by row, summary of the above
 
-        '''
-        ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), _ = self.get_anomalies_coordinates(label)
-        safe_mask, _ = self.create_safe_mask(label, start_with_edges, end_with_edges)
-        thresholds, _ = self.get_unique_thresholds(score)
+    #     '''
+    #     ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), _ = self.get_anomalies_coordinates(label)
+    #     safe_mask, _ = self.create_safe_mask(label, start_with_edges, end_with_edges)
+    #     thresholds, _ = self.get_unique_thresholds(score)
 
-        pos, _ = self.distance_from_anomaly(label, start_with_edges, end_with_edges, clip=True)
-        sm, _ = self.get_score_mask(score, thresholds)
+    #     pos, _ = self.distance_from_anomaly(label, start_with_edges, end_with_edges, clip=True)
+    #     sm, _ = self.get_score_mask(score, thresholds)
 
-        labels, _ = self.add_slopes(label, start_no_edges, end_no_edges, pos)
-        existence, _ = self.compute_existence(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
-        (fp, fn, tp, positives, negatives, fpr), _ = self.compute_confusion_matrix(labels, sm)
+    #     labels, _ = self.add_slopes(label, start_no_edges, end_no_edges, pos)
+    #     existence, _ = self.compute_existence(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
+    #     (fp, fn, tp, positives, negatives, fpr), _ = self.compute_confusion_matrix(labels, sm)
 
-        (precision, recall), _ = self.precision_recall_curve(tp, fp, positives, existence)
-        vus_pr, _ = self.auc(recall, precision)
+    #     (precision, recall), _ = self.precision_recall_curve(tp, fp, positives, existence)
+    #     vus_pr, _ = self.auc(recall, precision)
 
     
     @time_it
@@ -346,15 +346,16 @@ class VUSNumpy():
         return result
     
     @time_it
-    def add_slopes(self, label, start_points, end_points, pos, plot=False):
+    def add_slopes(self, label, start_points, end_points, pos, plot=True):
         if self.add_slopes_mode == 'precomputed':
             slopes = self.add_slopes_precomputed(label, start_points, end_points)
         else:
             slopes = self.add_slopes_function(label, pos)
 
         if plot:
+            # Example used in paper is the first time series of Daphnet
             sns.set_style("whitegrid")
-            fig, ax = plt.subplots(2, 1, figsize=(6, 4), sharex=True, gridspec_kw={'height_ratios': [1, 1.2]})
+            fig, ax = plt.subplots(2, 1, figsize=(5, 4), sharex=True, gridspec_kw={'height_ratios': [1, 1.2]})
 
             plot_start = 13150 + 25
             plot_end = 13490 - 200
@@ -362,21 +363,24 @@ class VUSNumpy():
             sns.lineplot(label[plot_start:plot_end], ax=ax[0], linewidth=2.5, color='#000000')
             ax[0].set_title('Label')
             ax[0].grid(alpha=0.2)
+            ax[0].annotate(f'(a)', xy=(7, 0.7), color='k', fontsize=15, weight='bold', alpha=.8)
 
             ax[1].annotate(f'Z', xy=(111, self.zita),
                         xytext=(115, self.zita + 0.15),
-                        arrowprops=dict(arrowstyle="->", color='gray', lw=1.5),
-                        color='gray', fontsize=15, weight='bold')
-            ax[1].axhline(y=self.zita, xmin=0, xmax=1000, color='gray', linestyle='-.', zorder=0, alpha=.5)
-            sns.lineplot(ax=ax[1], data=slopes.T[plot_start:plot_end], linewidth=1.5, palette='rocket', legend=False)
+                        arrowprops=dict(arrowstyle="->", color='purple', lw=1.5, alpha=.5),
+                        color='purple', fontsize=12, weight='bold', alpha=.5)
+            ax[1].axhline(y=self.zita, xmin=0, xmax=1000, color='purple', linestyle='-.', zorder=0, alpha=.5)
+            sns.lineplot(ax=ax[1], data=slopes.T[plot_start:plot_end], linewidth=1.5, palette='flare_r', legend=False)
             ax[1].set_title('Label with buffers')
             ax[1].set_xlabel('Time')
             ax[1].grid(alpha=0.2)
+
 
             plt.tight_layout()
             plt.savefig("experiments/figures/label_buffer_example.svg", bbox_inches='tight')
             plt.savefig("experiments/figures/label_buffer_example.pdf", bbox_inches='tight')
             plt.show()
+            exit()
 
         return slopes
     
@@ -393,18 +397,37 @@ class VUSNumpy():
             existence = None
         
         if plot:
-            fig, ax = plt.subplots(1, 1, figsize=(6, 4)) #, gridspec_kw={'height_ratios': [2, 1, 1]}
-            ax = [ax]
+            # Example used in paper is the first time series of YAHOO
+            fig, ax = plt.subplots(1, 1, figsize=(5, 4))
 
-            # Existence heatmap
-            sns.heatmap(existence, cmap="rocket", ax=ax[0], annot=False)
-            ax[0].set_xlabel("Thresholds")
-            ax[0].set_ylabel("Slopes")
-            ax[0].invert_yaxis()
-            ax[0].grid(alpha=0)
+            sns.heatmap(
+                existence,
+                cmap="flare_r",
+                ax=ax,
+                annot=False,
+                linewidths=0,
+                linecolor=None,
+                rasterized=True
+            )
+            
+            ax.annotate(f'(b)', xy=(68, 18), color='k', fontsize=15, weight='bold', alpha=.8)
+            ax.set_xlabel("Threshold")
+            ax.set_ylabel("Buffer")
+            ax.invert_yaxis()
+            ax.set_facecolor('white')
+            ax.set_xticks(np.arange(len(thresholds)), thresholds)
 
+            plt.locator_params(axis='y', nbins=11)
+            plt.locator_params(axis='x', nbins=9)
+            plt.xticks(rotation=0)
+
+            plt.tight_layout()
+            plt.savefig("experiments/figures/existence_heatmap.svg", bbox_inches='tight')
+            plt.savefig("experiments/figures/existence_heatmap.pdf", bbox_inches='tight')
+            plt.show()
+            exit()
             # # Slopes visualization
-            # sns.lineplot(labels.T, palette="rocket", legend=False, ax=ax[1])
+            # sns.lineplot(labels.T, palette="flare_r", legend=False, ax=ax[1])
             # ax[1].set_title("Slopes")
             # ax[1].set_xlabel("Time")
             # ax[1].set_ylabel("Slopes")
@@ -415,10 +438,6 @@ class VUSNumpy():
             # ax[2].set_xlabel("Time")
             # ax[2].set_ylabel("Score")
 
-            plt.tight_layout()
-            plt.savefig("experiments/figures/existence_heatmap.svg", bbox_inches='tight')
-            plt.savefig("experiments/figures/existence_heatmap.pdf", bbox_inches='tight')
-            plt.show()
 
         return existence
     
@@ -643,7 +662,7 @@ class VUSNumpy():
         return false_negatives, true_positives, positives
     
     @time_it
-    def precision_recall_curve(self, tp, fp, positives, existence, plot=True):
+    def precision_recall_curve(self, tp, fp, positives, existence, plot=False):
         ones, zeros = np.ones(self.n_slopes)[:, np.newaxis], np.zeros(self.n_slopes)[:, np.newaxis]
         precision = np.hstack((ones, (tp / (tp + fp))))
         recall = np.hstack((zeros, (tp / positives)))
@@ -652,30 +671,47 @@ class VUSNumpy():
             recall[:, 1:] = np.multiply(recall[:, 1:], existence)
 
         if plot:
-            # Plot 3D Precision-Recall surface
-
-            fig = plt.figure(figsize=(6, 4))
-            ax = fig.add_subplot(111, projection='3d')
-
-            # Remove the very first values (column 0) which are always 1
-            P = precision[:, 1:]
+            # Example used in paper is the first time series of YAHOO
+            P = precision[:, 1:] # Remove the very first values which are always 1 or 0
             R = recall[:, 1:]
-            n_slopes, n_thresholds = P.shape
-            slope_idx = np.arange(n_slopes)
-            threshold_idx = np.arange(n_thresholds)
-
-            S, T = np.meshgrid(slope_idx, threshold_idx, indexing='ij')
-
-            ax.plot_surface(S, T, P, cmap='rocket', alpha=0.8)
-            ax.set_xlabel('Buffer')
-            ax.set_ylabel('Threshold')
-            ax.set_zlabel('Precision@Recall')
+            n_slopes, n_thresholds = existence.shape
+            S = np.repeat(np.arange(n_slopes)[:, None], n_thresholds, axis=1)
+            plot_methods = ['surface', 'curves']
             
-            plt.tight_layout()
-            plt.savefig("experiments/figures/precision_recall_surface.svg", bbox_inches='tight')
-            plt.savefig("experiments/figures/precision_recall_surface.pdf", bbox_inches='tight')
-            plt.show()
+            for method in plot_methods:
+                fig = plt.figure(figsize=(5, 4))
+                ax = fig.add_subplot(111, projection='3d')
 
+                if method == 'surface':
+                    ax.plot_surface(R, S, P, cmap='flare_r', alpha=1)
+                else:
+                    for i in range(n_slopes):
+                        ax.plot(
+                            R[i],
+                            np.full_like(R[i], i),
+                            P[i],
+                            color=sns.color_palette("flare_r", n_slopes)[i],
+                            linewidth=1.5,
+                        )
+
+                ax.set_xlabel('Recall')
+                ax.set_ylabel('Buffer')
+                ax.set_zlabel('Precision')            
+                ax.text(
+                    x=5, y=5, z=7,  # slightly inside top-left, on top of surface
+                    s='(c)',
+                    transform=ax.transAxes,      # use axes fraction coordinates
+                    fontsize=14,
+                    fontweight='bold',
+                    color='k',
+                    alpha=0.8
+                )
+
+                plt.tight_layout()
+                plt.savefig(f"experiments/figures/precision_recall_{method}.svg", bbox_inches='tight', bbox_extra_artists=(ax.xaxis.label, ax.yaxis.label, ax.zaxis.label))
+                plt.savefig(f"experiments/figures/precision_recall_{method}.pdf", bbox_inches='tight', bbox_extra_artists=(ax.xaxis.label, ax.yaxis.label, ax.zaxis.label))
+                plt.show()
+            exit()
         return precision, recall
     
     @time_it
