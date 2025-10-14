@@ -5,7 +5,7 @@
 @what: FF-VUS
 """
 
-from utils.utils import time_it
+# from utils.utils import time_it
 
 import numpy as np
 import math
@@ -88,7 +88,7 @@ class VUSNumpy():
             else:
                 self.pos_slopes, self.neg_slopes = np.array([]), np.array([])
 
-    @time_it
+    #@time_it
     def compute(self, label, score):
         """
         Main computation function for the VUS metric.
@@ -177,15 +177,15 @@ class VUSNumpy():
     #     vus_pr, _ = self.auc(recall, precision)
 
     
-    @time_it
+    #@time_it
     def get_score_mask(self, score, thresholds):
         return score >= thresholds[:, None]
     
-    @time_it
+    #@time_it
     def get_unique_thresholds(self, score):
         return np.sort(np.unique(score))[::-1]
     
-    @time_it
+    #@time_it
     def create_safe_mask(self, label, start_points, end_points, extra_safe=False):
         """
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
@@ -244,7 +244,7 @@ class VUSNumpy():
 
         return shifted_slopes
     
-    @time_it
+    #@time_it
     def distance_from_anomaly(self, label, start_points, end_points, clip=False):
         '''
         For every point in the label, returns a time series that shows the distance
@@ -269,7 +269,7 @@ class VUSNumpy():
         
         return pos
     
-    @time_it
+    #@time_it
     def get_anomalies_coordinates(self, label: np.array):
         """
         Return the starting and ending points of all anomalies in label,
@@ -345,8 +345,8 @@ class VUSNumpy():
 
         return result
     
-    @time_it
-    def add_slopes(self, label, start_points, end_points, pos, plot=True):
+    #@time_it
+    def add_slopes(self, label, start_points, end_points, pos, plot=False):
         if self.add_slopes_mode == 'precomputed':
             slopes = self.add_slopes_precomputed(label, start_points, end_points)
         else:
@@ -380,11 +380,10 @@ class VUSNumpy():
             plt.savefig("experiments/figures/label_buffer_example.svg", bbox_inches='tight')
             plt.savefig("experiments/figures/label_buffer_example.pdf", bbox_inches='tight')
             plt.show()
-            exit()
 
         return slopes
     
-    @time_it
+    #@time_it
     def compute_existence(self, labels, sm, score, thresholds, start_points, end_points, safe_mask, plot=False):
         if self.existence_mode == 'optimized':
             existence = self.existence_optimized(labels, score, thresholds, start_points, end_points)
@@ -472,10 +471,18 @@ class VUSNumpy():
 
         return existence / n_anomalies[:, None]
 
-    def existence_optimized(self, labels, score, thresholds, start_points, end_points):
+    def existence_optimized(self, labels, score, thresholds, start_points, end_points, plot=False):
         """
         Optimized existence computation (~400x faster than trivial implementation).
         Suitable for CPU applications.
+
+        Step-by-step explanation of the algorithm:
+        1) Find the starting and ending points of every anomaly, for every buffer. 2 arrays of shape (L x n)
+        2) Find all anomalies were their buffers overlap, and at which point (or in other words, which buffers overlap). This is important for 2 reasons. First, the number of anomalies in a time series changes after buffers collide. Second, if two anomalies merge and the first one is found, every anomaly merged to this one is also conidered found.
+        3) Iterate over the anomalies and fill in the (L x t) existence matrix, where L is the number of buffers and t is the number of thresholds. Every cell of this matrix represents the numbers of anomalies found for the according buffer x threshold pair. Iterating over the anomalies we will slowly add the found anomalies in this buffer and finally divide by the number of anomalies to get the fraction.
+        3.1) If the anomaly is found (the maximum score value) in the middle of the anomaly, and not on the buffers, then the existence value of the main label is the same as the one of the buffers and it only depends on the threshold where the maximum value of the score lies. All values above the threshold are 0 and all values equal and below the threshold are 1.
+        3.2) If the anomaly is found in the buffer region, then identify the exact buffer where the maximum score value lies. All the buffers smaller than this buffer have also found the anomaly so we can complete them. We can repeat the same process for the region after the buffer.
+        4) Divide every cell of the existence matrix with the total number of anomalies of the according buffer.
         """
         n_slopes, T = labels.shape
         n_thresholds = thresholds.shape[0]
@@ -532,21 +539,33 @@ class VUSNumpy():
             existence += curr_existence
             prev_existence = np.logical_or(tmp_existence, curr_existence)
 
-        # print(existence[-1].astype(int))    
-        # problem is on last slope (n_slopes, n_thresholds)
-        # There is an overlap at the very final slope that this approach cant catch
-        # Does this happen whenever two anomalies first touch ?
+        if plot:
+            fig, axs = plt.subplots(3, 1, figsize=(10, 7), sharex=False)
 
-        # fig, axs = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
-        # axs[0].plot(labels[-2], color='blue', label='Label')
-        # axs[0].set_title('Label')
-        # axs[0].legend()
-        # axs[1].plot(score, color='orange', label='Score')
-        # axs[1].set_title('Score')
-        # axs[1].legend()
-        # plt.tight_layout()
-        # plt.show()
-        # exit()
+            # 1️⃣ Plot labels with buffers
+            axs[0].imshow(labels, aspect='auto', cmap='flare_r', interpolation='nearest')
+            axs[0].set_title("Ground Truth Anomalies with Buffers (rows = buffers)")
+            axs[0].set_ylabel("Buffer Index")
+
+            # 2️⃣ Plot the score
+            axs[1].plot(score, color='orange', label='Detector Score')
+            axs[1].set_title("Detection Score")
+            axs[1].legend()
+
+            # 3️⃣ Plot the final existence matrix
+            sns.heatmap(
+                existence / n_anomalies[:, None],
+                ax=axs[2],
+                cmap="flare_r",
+                cbar=True,
+                cbar_kws={"label": "Existence Value"}
+            )
+            axs[2].set_title("Existence Matrix (Buffer × Threshold)")
+            axs[2].set_xlabel("Threshold Index")
+            axs[2].set_ylabel("Buffer Index")
+
+            plt.tight_layout()
+            plt.show()
 
         return existence / n_anomalies[:, None]
 
@@ -593,7 +612,7 @@ class VUSNumpy():
 
         return (n_anomalies_found / total_anomalies)
     
-    @time_it
+    #@time_it
     def compute_confusion_matrix(self, labels, sm):
         """
         Scikit-learn order: tn, fp, fn, tp
@@ -661,7 +680,7 @@ class VUSNumpy():
 
         return false_negatives, true_positives, positives
     
-    @time_it
+    #@time_it
     def precision_recall_curve(self, tp, fp, positives, existence, plot=False):
         ones, zeros = np.ones(self.n_slopes)[:, np.newaxis], np.zeros(self.n_slopes)[:, np.newaxis]
         precision = np.hstack((ones, (tp / (tp + fp))))
@@ -714,7 +733,7 @@ class VUSNumpy():
             exit()
         return precision, recall
     
-    @time_it
+    #@time_it
     def auc(self, x, y):
         if self.interpolation_mode == 'linear':
             return self.linear_interpolation(x, y).mean()
