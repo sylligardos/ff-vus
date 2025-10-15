@@ -5,14 +5,14 @@
 @what: FF-VUS
 """
 
-# from utils.utils import time_it
+from utils.utils import time_it
 
 import numpy as np
 import math
 from skimage.util.shape import view_as_windows as viewW
 import matplotlib.pyplot as plt
 import seaborn as sns
-from mpl_toolkits.mplot3d import Axes3D
+import warnings
 
 
 class VUSNumpy():
@@ -72,7 +72,7 @@ class VUSNumpy():
         self.metric_mode = self.validate_args(metric, metric_args)
 
         # Precompute slopes
-        self.prepare_procomputed_slopes()
+        self.prepare_precomputed_slopes()
 
 
     def validate_args(self, value, valid_options):
@@ -80,15 +80,15 @@ class VUSNumpy():
             raise ValueError(f"Unknown argument {value}. Must be one of {valid_options}.")
         return value
     
-    def prepare_procomputed_slopes(self):
-        if self.add_slopes_mode:
+    def prepare_precomputed_slopes(self):
+        if self.add_slopes_mode == 'precomputed':
             if self.slope_size > 0:
                 self.pos_slopes = self.precompute_slopes()
                 self.neg_slopes = self.pos_slopes[:, ::-1]
             else:
                 self.pos_slopes, self.neg_slopes = np.array([]), np.array([])
 
-    #@time_it
+    @time_it
     def compute(self, label, score):
         """
         Main computation function for the VUS metric.
@@ -177,15 +177,27 @@ class VUSNumpy():
     #     vus_pr, _ = self.auc(recall, precision)
 
     
-    #@time_it
+    @time_it
     def get_score_mask(self, score, thresholds):
         return score >= thresholds[:, None]
     
-    #@time_it
-    def get_unique_thresholds(self, score):
-        return np.sort(np.unique(score))[::-1]
+    @time_it
+    def get_unique_thresholds(self, score, max_thresholds=200):
+        """
+        Returns the sorted unique thresholds in descending order.
+        
+        If the number of unique thresholds is too high, it issues a warning.
+        """
+        thresholds = np.sort(np.unique(score))[::-1]
+        
+        if len(thresholds) > max_thresholds:
+            warnings.warn(
+                f"Number of unique thresholds is {len(thresholds)}, which may slow down computation. "
+                "Consider rounding your scores to 2 decimals."
+            )
+        return thresholds
     
-    #@time_it
+    @time_it
     def create_safe_mask(self, label, start_points, end_points, extra_safe=False):
         """
         A safe mask is a mask of the label that every anomaly is one point bigger (left and right)
@@ -244,7 +256,7 @@ class VUSNumpy():
 
         return shifted_slopes
     
-    #@time_it
+    @time_it
     def distance_from_anomaly(self, label, start_points, end_points, clip=False):
         '''
         For every point in the label, returns a time series that shows the distance
@@ -269,7 +281,7 @@ class VUSNumpy():
         
         return pos
     
-    #@time_it
+    @time_it
     def get_anomalies_coordinates(self, label: np.array):
         """
         Return the starting and ending points of all anomalies in label,
@@ -328,15 +340,17 @@ class VUSNumpy():
         """
         Start points and end points of anomalies are without edges
         """
-        result = np.repeat([label], self.n_slopes, axis=0)
-        if self.n_slopes == 1: 
-            return result
+        result = np.repeat([label.astype(np.float64)], self.n_slopes, axis=0)
 
+        if self.n_slopes == 1:
+            return result
+        
         for curr_point in start_points:
             slope_start = max(curr_point - self.slope_size, 0)
             slope_end = curr_point + 1  # to include it in the transformation, read desc
             adjusted_l = slope_end - slope_start
             result[1:, slope_start: slope_end] = np.maximum(result[1:, slope_start: slope_end], self.pos_slopes[:, -adjusted_l:])
+            
         for curr_point in end_points:
             slope_start = curr_point
             slope_end = min(curr_point + self.slope_size, len(label) - 1) + 1       # to include it in the transformation, read desc
@@ -345,7 +359,7 @@ class VUSNumpy():
 
         return result
     
-    #@time_it
+    @time_it
     def add_slopes(self, label, start_points, end_points, pos, plot=False):
         if self.add_slopes_mode == 'precomputed':
             slopes = self.add_slopes_precomputed(label, start_points, end_points)
@@ -375,7 +389,6 @@ class VUSNumpy():
             ax[1].set_xlabel('Time')
             ax[1].grid(alpha=0.2)
 
-
             plt.tight_layout()
             plt.savefig("experiments/figures/label_buffer_example.svg", bbox_inches='tight')
             plt.savefig("experiments/figures/label_buffer_example.pdf", bbox_inches='tight')
@@ -383,7 +396,7 @@ class VUSNumpy():
 
         return slopes
     
-    #@time_it
+    @time_it
     def compute_existence(self, labels, sm, score, thresholds, start_points, end_points, safe_mask, plot=False):
         if self.existence_mode == 'optimized':
             existence = self.existence_optimized(labels, score, thresholds, start_points, end_points)
@@ -425,18 +438,6 @@ class VUSNumpy():
             plt.savefig("experiments/figures/existence_heatmap.pdf", bbox_inches='tight')
             plt.show()
             exit()
-            # # Slopes visualization
-            # sns.lineplot(labels.T, palette="flare_r", legend=False, ax=ax[1])
-            # ax[1].set_title("Slopes")
-            # ax[1].set_xlabel("Time")
-            # ax[1].set_ylabel("Slopes")
-            
-            # # Score visualization
-            # ax[2].plot(score, color='orange')
-            # ax[2].set_title("Score")
-            # ax[2].set_xlabel("Time")
-            # ax[2].set_ylabel("Score")
-
 
         return existence
     
@@ -471,7 +472,7 @@ class VUSNumpy():
 
         return existence / n_anomalies[:, None]
 
-    def existence_optimized(self, labels, score, thresholds, start_points, end_points, plot=False):
+    def existence_optimized(self, labels, score, thresholds, start_points, end_points):
         """
         Optimized existence computation (~400x faster than trivial implementation).
         Suitable for CPU applications.
@@ -539,34 +540,6 @@ class VUSNumpy():
             existence += curr_existence
             prev_existence = np.logical_or(tmp_existence, curr_existence)
 
-        if plot:
-            fig, axs = plt.subplots(3, 1, figsize=(10, 7), sharex=False)
-
-            # 1️⃣ Plot labels with buffers
-            axs[0].imshow(labels, aspect='auto', cmap='flare_r', interpolation='nearest')
-            axs[0].set_title("Ground Truth Anomalies with Buffers (rows = buffers)")
-            axs[0].set_ylabel("Buffer Index")
-
-            # 2️⃣ Plot the score
-            axs[1].plot(score, color='orange', label='Detector Score')
-            axs[1].set_title("Detection Score")
-            axs[1].legend()
-
-            # 3️⃣ Plot the final existence matrix
-            sns.heatmap(
-                existence / n_anomalies[:, None],
-                ax=axs[2],
-                cmap="flare_r",
-                cbar=True,
-                cbar_kws={"label": "Existence Value"}
-            )
-            axs[2].set_title("Existence Matrix (Buffer × Threshold)")
-            axs[2].set_xlabel("Threshold Index")
-            axs[2].set_ylabel("Buffer Index")
-
-            plt.tight_layout()
-            plt.show()
-
         return existence / n_anomalies[:, None]
 
     def existence_matrix(self, labels, score_mask, safe_mask):
@@ -612,7 +585,7 @@ class VUSNumpy():
 
         return (n_anomalies_found / total_anomalies)
     
-    #@time_it
+    @time_it
     def compute_confusion_matrix(self, labels, sm):
         """
         Scikit-learn order: tn, fp, fn, tp
@@ -680,7 +653,7 @@ class VUSNumpy():
 
         return false_negatives, true_positives, positives
     
-    #@time_it
+    @time_it
     def precision_recall_curve(self, tp, fp, positives, existence, plot=False):
         ones, zeros = np.ones(self.n_slopes)[:, np.newaxis], np.zeros(self.n_slopes)[:, np.newaxis]
         precision = np.hstack((ones, (tp / (tp + fp))))
@@ -733,7 +706,7 @@ class VUSNumpy():
             exit()
         return precision, recall
     
-    #@time_it
+    @time_it
     def auc(self, x, y):
         if self.interpolation_mode == 'linear':
             return self.linear_interpolation(x, y).mean()

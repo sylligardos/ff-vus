@@ -10,12 +10,11 @@ from utils.utils import time_it
 
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from tqdm import tqdm
 import psutil
-import tracemalloc
-import time
+import warnings
+# import matplotlib.pyplot as plt
+# import seaborn as sns
 
 
 class VUSTorch():
@@ -236,7 +235,7 @@ class VUSTorch():
         return score >= thresholds[:, None]
     
     @time_it
-    def get_unique_thresholds(self, score, compute_in_chunks=True):
+    def get_unique_thresholds(self, score, compute_in_chunks=True, max_thresholds=200):
         if not compute_in_chunks:
             sorted_thresholds, _ = torch.sort(torch.unique(score), descending=True)
         else:
@@ -252,6 +251,13 @@ class VUSTorch():
             # sorted_thresholds_whole, _ = torch.sort(torch.unique(score), descending=True)
             # if not torch.equal(sorted_thresholds, sorted_thresholds_whole):
             #     raise ValueError("Threshold arrays are not equal: sorted_thresholds and sorted_thresholds_whole differ.")
+
+        if len(thresholds) > max_thresholds:
+            warnings.warn(
+                f"Number of unique thresholds is {len(thresholds)}, which may slow down computation. "
+                "Consider rounding your scores to 2 decimals."
+            )
+
 
         return sorted_thresholds
     

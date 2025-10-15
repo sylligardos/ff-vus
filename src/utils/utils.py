@@ -23,8 +23,6 @@ def load_tsb(testing=False, dataset='KDD21', n_timeseries=10):
     dataloader = Dataloader(raw_data_path='data/raw')
     datasets = [dataset] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
-
-    print(dataloader.get_dataset_names())
     
     if testing:
         # problematic_timeseries_indexes = []
