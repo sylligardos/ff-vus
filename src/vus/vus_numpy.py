@@ -595,19 +595,11 @@ class VUSNumpy():
             conf_matrix = self.conf_matrix_trivial(labels, sm)
         elif self.conf_matrix_mode == "dynamic":
             conf_matrix = self.conf_matrix_dyn(labels, sm)
-        else:
+        elif self.conf_matrix_mode == "dynamic_plus":
             conf_matrix = self.conf_matrix_dyn_plus(labels, sm)
+        else:
+            raise ValueError('Unknown confusion matrix computation mode')
         fn, tp, positives = conf_matrix
-        
-        # conf_matrix = self.conf_matrix_dyn(labels, sm)
-        # conf_matrix_1 = self.conf_matrix_dyn_plus(labels, sm)
-        # fn, tp, positives = conf_matrix
-        # fn_1, tp_1, positives_1 = conf_matrix_1
-        # print(tp)
-        # # print(np.mean(tp - tp_1), np.max(tp - tp_1), np.all(tp == tp_1))
-        # # print(np.mean(fn - fn_1), np.max(fn - fn_1), np.all(fn == fn_1))
-        # # print(np.mean(positives - positives_1), np.max(positives - positives_1), np.all(positives == positives_1))
-        # exit()
 
         fp = sm.sum(axis=1) - tp
         negatives = labels[0].shape[0] - positives
@@ -645,8 +637,8 @@ class VUSNumpy():
             slope_mask = np.where(labels[-1] < 1)[0]
         label_as_mask = np.where(labels[0])[0]
         
-        initial_tps = sm[:, label_as_mask].sum(axis=1)
-        slope_tps = np.matmul(labels[:, slope_mask], sm[:, slope_mask].T)
+        initial_tps = sm[:, label_as_mask].sum(axis=1)  # same as np.dot(sm, labels[0])
+        slope_tps = np.matmul(labels[:, slope_mask], sm[:, slope_mask].T) # same as np.matmul(sm[:, slope_mask], labels[:, slope_mask].T).T
         true_positives = initial_tps + slope_tps
         false_negatives = (~sm)[:, label_as_mask].sum(axis=1)
         positives = ((true_positives + false_negatives) + label_as_mask.shape[0]) / 2

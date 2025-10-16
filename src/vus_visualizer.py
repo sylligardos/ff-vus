@@ -23,9 +23,54 @@ from utils.utils import load_tsb
 def main(plot):
     if plot == 'existence_seq':
         visualize_existence_examples()
+    elif plot == 'conf_matrix':
+        confusion_matrix_visualization()
     else:
         raise ValueError('Unknown plot type')
     
+def confusion_matrix_visualization():
+    sns.set_style("whitegrid")
+    ffvus = VUSNumpy(50)
+
+    label = np.array([0]*100 + [1]*200 + [0]*400).astype(np.float64)
+    ((start_points, end_points), _), _ = ffvus.get_anomalies_coordinates(label)
+    labels = ffvus.add_slopes_precomputed(label, start_points, end_points)
+    T = label.shape[0]
+    
+    score = np.zeros_like(label, dtype=float)
+    score[200:400] = 0.9
+    # score += np.random.uniform(0, .2, score.shape[0])
+    thresholds = np.linspace(1, 0, 11).round(2)
+    sm, _ = ffvus.get_score_mask(score, thresholds)
+    t = 0.6
+
+    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(5, 3.5))
+
+    ax[0].plot(labels[-1], color='k', linewidth=2.5)
+    ax[0].fill_between(range(T), 0, labels[-1], where=label == 1, color="blue", alpha=0.4, label="Original anomaly")
+    ax[0].fill_between(range(T), 0, labels[-1], where=np.logical_and(labels[-1] < 1, labels[-1] > 0), color="red", alpha=0.3, label="Buffer regions")
+    ax[0].set_title('Label with buffer')
+    ax[0].legend()
+
+    ax[1].plot(score, color='k', linewidth=2.5)
+    ax[1].fill_between(range(T), t, score, where=np.logical_and(np.logical_and(score > t, labels[-1]), label == 1), color="green", alpha=0.4, label="TP -> dot product")
+    ax[1].fill_between(range(T), t, score, where=np.logical_and(np.logical_and(score > t, labels[-1]), labels[-1] < 1), color="orange", alpha=0.4, label="TP -> matrix mul.")
+    ax[1].set_ylim(0, 1)
+    ax[1].hlines(y=0.6, xmin=0, xmax=T, linestyle='--', color='gray', label='threshold')
+    ax[1].set_xlabel('Time')
+    ax[1].set_title('Score')
+    ax[1].legend()
+    
+    plt.tight_layout()
+    plt.savefig("experiments/figures/tp_buffer_masking.svg", bbox_inches="tight")
+    plt.savefig("experiments/figures/tp_buffer_masking.pdf", bbox_inches="tight")
+
+    plt.show()
+
+    # ffvus.conf_matrix_mode = 'dynamic_plus'
+    # (fp, fn, tp, p, n, fpr), _ = ffvus.compute_confusion_matrix(labels, sm)
+    # print(fn.shape, tp.shape, p.shape)
+
 
 def visualize_existence_examples():
     thresholds = np.linspace(1, 0, 11).round(2) 
@@ -98,7 +143,7 @@ if __name__ == "__main__":
         description='Visualize different useful concepts of the ffvus metric'
     )
     
-    parser.add_argument('--plot', type=str, choices=['existence_seq'], default='existence_seq', help='Type of plot to generate')
+    parser.add_argument('--plot', type=str, choices=['existence_seq', 'conf_matrix'], default='existence_seq', help='Type of plot to generate')
     args = parser.parse_args()
 
     main(plot=args.plot)
