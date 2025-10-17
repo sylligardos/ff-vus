@@ -38,7 +38,7 @@ def confusion_matrix_visualization():
     T = label.shape[0]
     
     score = np.zeros_like(label, dtype=float)
-    score[200:400] = 0.9
+    score[200:400] = 1
     # score += np.random.uniform(0, .2, score.shape[0])
     thresholds = np.linspace(1, 0, 11).round(2)
     sm, _ = ffvus.get_score_mask(score, thresholds)
@@ -47,23 +47,26 @@ def confusion_matrix_visualization():
     fig, ax = plt.subplots(2, 1, sharex=True, figsize=(5, 3.5))
 
     ax[0].plot(labels[-1], color='k', linewidth=2.5)
-    ax[0].fill_between(range(T), 0, labels[-1], where=label == 1, color="blue", alpha=0.4, label="Original anomaly")
-    ax[0].fill_between(range(T), 0, labels[-1], where=np.logical_and(labels[-1] < 1, labels[-1] > 0), color="red", alpha=0.3, label="Buffer regions")
-    ax[0].set_title('Label with buffer')
+    ax[0].fill_between(range(T), 0, 1, where=labels[-1] == 0, color="lightskyblue", alpha=0.5, label="Non-anomalous region")
+    ax[0].fill_between(range(T), 0, 1, where=labels[-1] == 1, color="pink", alpha=0.5, label="Original anomaly")
+    ax[0].fill_between(range(T), 0, 1, where=np.logical_and(labels[-1] < 1, labels[-1] > 0), color="purple", alpha=0.5, label="Buffer region")
+    ax[0].set_title('Label with buffer L\'')
     ax[0].legend()
 
     ax[1].plot(score, color='k', linewidth=2.5)
-    ax[1].fill_between(range(T), t, score, where=np.logical_and(np.logical_and(score > t, labels[-1]), label == 1), color="green", alpha=0.4, label="TP -> dot product")
-    ax[1].fill_between(range(T), t, score, where=np.logical_and(np.logical_and(score > t, labels[-1]), labels[-1] < 1), color="orange", alpha=0.4, label="TP -> matrix mul.")
-    ax[1].set_ylim(0, 1)
-    ax[1].hlines(y=0.6, xmin=0, xmax=T, linestyle='--', color='gray', label='threshold')
+    ax[1].fill_between(range(T), 0, 1, where=np.logical_and(np.logical_and(score > t, labels[-1]), label == 1), color="lightgreen", alpha=0.5, label="TP; O(t, T)")
+    ax[1].fill_between(range(T), 0, 1, where=np.logical_and(np.logical_and(score > t, labels[-1]), labels[-1] < 1), color="darkgreen", alpha=0.5, label="TP; O(t, L, T)")
+    ax[1].fill_between(range(T), 0, 1, where=np.logical_and(score == 1, labels[-1]  == 0), color="red", alpha=0.5, label="FP; O(t, T)")
+    # ax[1].fill_between(range(T), 0, 1, where=np.logical_and(score == 0, label == 0), color="blue", alpha=0.2, label="TN")
+    ax[1].fill_between(range(T), 0, 1, where=np.logical_and(score == 0, label == 1), color="orange", alpha=0.5, label="FN; O(t, T)")
+    # ax[1].hlines(y=0.6, xmin=0, xmax=T, linestyle='--', color='gray', label='threshold')
     ax[1].set_xlabel('Time')
-    ax[1].set_title('Score')
+    ax[1].set_title('Score of threshold t\'')
     ax[1].legend()
     
     plt.tight_layout()
-    plt.savefig("experiments/figures/tp_buffer_masking.svg", bbox_inches="tight")
-    plt.savefig("experiments/figures/tp_buffer_masking.pdf", bbox_inches="tight")
+    plt.savefig("experiments/figures/conf_matrix_mask.svg", bbox_inches="tight")
+    plt.savefig("experiments/figures/conf_matrix_mask.pdf", bbox_inches="tight")
 
     plt.show()
 
