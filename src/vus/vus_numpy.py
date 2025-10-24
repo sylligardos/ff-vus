@@ -390,9 +390,10 @@ class VUSNumpy():
             ax[1].grid(alpha=0.2)
 
             plt.tight_layout()
-            plt.savefig("experiments/figures/label_buffer_example.svg", bbox_inches='tight')
-            plt.savefig("experiments/figures/label_buffer_example.pdf", bbox_inches='tight')
+            plt.savefig("experiments/figures/ts_label_buffer_example.svg", bbox_inches='tight')
+            plt.savefig("experiments/figures/ts_label_buffer_example.pdf", bbox_inches='tight')
             plt.show()
+            exit()
 
         return slopes
     
