@@ -30,27 +30,52 @@ def main(plot):
         gpu_buffers_visualization()
     elif plot == 'gpu_existence':
         gpu_existence_visualization()
+    elif plot == 'steps':
+        steps_visualization()
     else:
         raise ValueError('Unknown plot type')
+
+
+def steps_visualization():
+    sns.set_style("whitegrid")
     
+    step_sizes = [1, 20, 100]
+
+    # label = torch.tensor([0]*15 + [1]*20 + [0]*40 + [1]*10 + [0]*25 + [1]*1 + [0]*20, dtype=torch.float32)
+    label = np.array([0]*100 + [1]*200 + [0]*400).astype(np.float64)    
+
+
+    fig, axes = plt.subplots(len(step_sizes), 1, figsize=(5, 8.5), sharex=True)
+    for i, step in enumerate(step_sizes):
+        ffvus = VUSNumpy(
+            slope_size=100,
+            step=1
+        )
+        ((start_points, end_points), _), _ = ffvus.get_anomalies_coordinates(label)
+        labels = ffvus.add_slopes_precomputed(label, start_points, end_points)
+    
+        sns.lineplot(labels.T, ax=axes[i], palette='flare_r', legend=False, linewidth=1.5)
+
+    plt.tight_layout()
+    plt.savefig("experiments/figures/buffer_steps.svg", bbox_inches="tight")
+    plt.savefig("experiments/figures/buffer_steps.pdf", bbox_inches="tight")
+    plt.show()
+
+
 def gpu_existence_visualization():
     sns.set_style("whitegrid")
     device = 'cpu'
     buffer_size = 10
     ffvus = VUSTorch(buffer_size)
 
-    label = torch.tensor([0]*15 + [1]*20 + [0]*25 + [1]*10 + [0]*5 + [1]*1 + [0]*20, dtype=torch.float32)
-    
+    label = torch.tensor([0]*15 + [1]*20 + [0]*40 + [1]*10 + [0]*25 + [1]*1 + [0]*20, dtype=torch.float32)
     score = torch.tensor(np.zeros_like(label, dtype=float))
-    # First anomaly (15–35): one detection inside (true positive) and one in left buffer
-    score[10] = 0.5   # left buffer
-    score[28] = 0.8   # inside anomaly
-    # Second anomaly (60–70): one detection in right buffer (missed in anomaly)
-    score[74] = 0.6   # right buffer
-    # Third anomaly (75–80): perfect detection inside
-    score[77] = 0.9
-    # Fourth anomaly (85): one detection close but outside
-    score[83] = 0.4   # left buffer (missed anomaly)
+    score[10] = 0.5
+    score[28] = 0.8
+    score[55] = 0.6
+    # score[63] = 0.6
+    # score[71] = 0.9
+    score[90] = 0.4
     
     (_, (start_points, end_points)), _ = ffvus.get_anomalies_coordinates(label)
     pos, _ = ffvus.distance_from_anomaly(label, start_points, end_points)
@@ -59,53 +84,63 @@ def gpu_existence_visualization():
     score_mask, _ = ffvus.get_score_mask(score, thresholds)
 
     # Compute existence
+    # We myltiply every label in labels with every score of all thresholds (both normalized; since we are only counting anomalies found we don't care about the value of the buffer)
+    # This means that only the regions where label and score are both 1 will survive in the output
+    # Since the label is encoded with the staircase, the output also contains the info of which anomaly was found (e.g. value is 4 for the 4th anonaly found)
+    # The cumulative max carries this info accross all time steps after every anomaly found and not only at the point where it was found
     norm_labels = (labels > 0).int()
-
     diff = torch.diff(norm_labels, dim=1, prepend=torch.zeros((norm_labels.size(0), 1), device=device))
     diff = torch.clamp(diff, min=0, max=1)
     stairs = torch.cumsum(diff, dim=1)
     labels_stairs = norm_labels * stairs
+    score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]  # Multiply every score mask with every staircased buffered label, shape (L, t, T)
+    cm = torch.cummax(score_hat, dim=2).values                      # Now every anomaly that is found, encodes the number of the anomaly, shape (L, t, T)
+    cm_diff = torch.diff(cm, dim=2)                                 
+    cm_diff_norm = torch.clamp(cm_diff - 1, min=0)                  
 
-    score_hat = labels_stairs[:, None, :] * score_mask[None, :, :]
-
-    cm = torch.cummax(score_hat, dim=2).values  # shape: [B, S, T']
-
-    cm_diff = torch.diff(cm, dim=2)
-    cm_diff_norm = torch.clamp(cm_diff - 1, min=0)
-
-    total_anomalies = stairs[:, -1][:, None]
-    final_anomalies_missed = total_anomalies - cm[:, :, -1]
-    n_anomalies_not_found = torch.sum(cm_diff_norm, dim=2) + final_anomalies_missed
-    n_anomalies_found = total_anomalies - n_anomalies_not_found
-    existence = n_anomalies_found / total_anomalies
-
-    # Visualization
-    fig, axes = plt.subplots(5, 1, figsize=(10, 10), sharex=True)
-    palette = 'flare_r'
-
-    sns.lineplot(labels.T, palette=palette, ax=axes[0], legend=False)
-    axes[0].set_title("(a) Label with buffers normalized")
-
-    sns.lineplot(score, palette=palette, ax=axes[1], legend=False)
-    axes[1].set_title("(b) Score")
-
-    # TODO: Why is the staircase of the third anomaly weird ?
-    sns.lineplot(labels_stairs.T, palette=palette, ax=axes[2], legend=False)
-    axes[2].set_title("(c) Staircase encoding of anomalies")
-
-    # sns.lineplot(score_mask.T, palette="Greens", ax=axes[2])
-    # axes[2].set_title("(c) Score mask for different thresholds")
-
-    # sns.lineplot(cm[0].T, palette="Oranges", ax=axes[3])
-    # axes[3].set_title("(d) Cumulative detection propagation")
-
-    # sns.lineplot(existence.T, palette="Reds", ax=axes[4])
-    axes[4].set_title("(e) Final existence surface")
+    total_anomalies = stairs[:, -1][:, None]                                            # Tells the total number of anomalies
+    final_anomalies_missed = total_anomalies - cm[:, :, -1]                             # CM dif can't show the last anomaly(-ies) that were not found, since it's a dif operation
+    n_anomalies_not_found = torch.sum(cm_diff_norm, dim=2) + final_anomalies_missed     # The normalized cm dif shows the number of anomalies not found, if every anomaly is found then cm_diff is always 1, so cm_diff_norm is always 0
+    n_anomalies_found = total_anomalies - n_anomalies_not_found                         
     
-    plt.xlabel("Time")
+    # --- Visualization ---
+    fig, axes = plt.subplots(5, 1, figsize=(5, 8.5), sharex=True)
+    
+    # (a) Label and buffered label
+    axes[0].plot(labels[-1], color="black", lw=2.5, label=f"Buffered label (L={buffer_size})")
+    axes[0].plot(label, '--', color="royalblue", lw=2.5, label="Original label")
+    axes[0].annotate('Single buffer\n     shown', xy=(50, 1), xytext=(40.5, .72))
+    axes[0].set_title("(a) Original (dashed) and buffered label")
+    axes[0].legend(loc="upper right").remove()
+
+    # (b) Staircase encoding
+    axes[1].plot(labels_stairs[-1], color="purple", lw=2.5)
+    axes[1].set_title("(b) Staircase encoding of buffered labels")
+    
+    # (c) Scores and score mask
+    axes[2].plot(score_mask[-2], color="green", lw=2.5, label=f"Score mask (thr={thresholds[-2]:.2f})")
+    axes[2].plot(score, '--', color="orange", lw=2.5, label="Score")
+    axes[2].annotate('Single threshold\n        shown', xy=(50, 1), xytext=(98, .55))
+    axes[2].set_title("(c) Score (dashed) and score mask")
+    axes[2].legend(loc="upper right").remove()
+
+    # (d) Score hat
+    axes[3].plot(score_hat[-1, -2, :], color="seagreen", lw=2.5)
+    axes[3].set_title("(d) $\\overline{Score}$ (score mask$\\bullet$staircase label)")
+    
+    # (e) Cumulative max
+    axes[4].plot(cm[-1, -2, :], color="dodgerblue", lw=2.5)
+    axes[4].set_title("(e) Cumulative Max of $\\overline{Score}$")
+    axes[4].hlines(y=[1, 3], xmin=0, xmax=label.shape[0], linestyle='--', color='k', lw=1.5)
+    axes[4].annotate('Step difference is 2,\n 1 anomaly missed', xy=(40, 1), xytext=(42, 1.6))
+    axes[4].annotate('', xy=(40, 1), xytext=(40, 3), arrowprops=dict(arrowstyle='<->', linestyle='--', color='k', lw=1.5))
+    axes[4].set_xlabel("Time")
+
     plt.tight_layout()
-    # plt.savefig("figures/gpu_existence.pdf", bbox_inches="tight")
+    plt.savefig("experiments/figures/gpu_existence.svg", bbox_inches="tight")
+    plt.savefig("experiments/figures/gpu_existence.pdf", bbox_inches="tight")
     plt.show()
+
     
 def gpu_buffers_visualization():
     sns.set_style("whitegrid")
@@ -254,7 +289,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--plot', 
         type=str, 
-        choices=['existence_seq', 'conf_matrix', 'gpu_buffers', 'gpu_existence'], 
+        choices=['existence_seq', 'conf_matrix', 'gpu_buffers', 'gpu_existence', 'steps'], 
         default='existence_seq', 
         help='Type of plot to generate'
     )
