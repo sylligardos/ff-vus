@@ -41,12 +41,12 @@ def main(plot):
 
 def global_mask_visualization():
     sns.set_style("whitegrid")
-    buffer_size = 2
+    buffer_size = 20
     ffvus = VUSNumpy(buffer_size)
     global_mask_choices = [False, True]
 
     dataloader = Dataloader(os.path.join('data', 'raw'))
-    x, y, fn = dataloader.load_raw_datasets(datasets=['ECG']) # dataloader.get_dataset_names()
+    x, y, fn = dataloader.load_raw_datasets(datasets=['MGAB']) # dataloader.get_dataset_names()
     ts_index = -1
     max_len = -1
     for i, ts in enumerate(x):
@@ -67,7 +67,6 @@ def global_mask_visualization():
         else:
             pass
         labels = ffvus.add_slopes_precomputed(label, start_no_edges, end_no_edges)
-        print('Computed buffers')
         
         sns.lineplot(labels.T, ax=axes[i], palette='flare_r', legend=False, linewidth=1.5)
         axes[i].set_title(f'Global mask: {global_mask}, Length: {len(label)}')
@@ -87,7 +86,7 @@ def steps_visualization():
 
     label = np.array([0]*40 + [1]*20 + [0]*40).astype(np.float64)    
 
-    fig, axes = plt.subplots(len(step_sizes), 1, figsize=(4, 3), sharex=True)
+    fig, axes = plt.subplots(len(step_sizes), 1, figsize=(4, 2.5), sharex=True)
     for i, step in enumerate(step_sizes):
         buffer_size = 20
         ffvus = VUSNumpy(

@@ -86,11 +86,11 @@ class SylliGraph:
         
         plt.show()
 
-    def boxplot_exec_time(self, df, order=None, filename=None, title=None, xlabel=None, ylabel=None):
+    def boxplot_exec_time(self, df, order=None, filename=None, title=None, xlabel=None, ylabel=None, figsize=(8, 5)):
         """
         Create a reusable boxplot for comparing execution times across metrics.
         """
-        plt.figure(figsize=(8, 5))
+        plt.figure(figsize=figsize)
 
         # df['Metric'] = df['Metric'].map(self.formal_names).fillna(df['Metric'])
         df = df.replace(self.formal_names)
