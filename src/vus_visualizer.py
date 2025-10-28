@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.gridspec import GridSpec
 import torch
+import os
 
 from vus.vus_numpy import VUSNumpy
 from vus.vus_torch import VUSTorch
@@ -32,29 +33,73 @@ def main(plot):
         gpu_existence_visualization()
     elif plot == 'steps':
         steps_visualization()
+    elif plot == 'global_mask':
+        global_mask_visualization()
     else:
         raise ValueError('Unknown plot type')
+
+
+def global_mask_visualization():
+    sns.set_style("whitegrid")
+    buffer_size = 2
+    ffvus = VUSNumpy(buffer_size)
+    global_mask_choices = [False, True]
+
+    dataloader = Dataloader(os.path.join('data', 'raw'))
+    x, y, fn = dataloader.load_raw_datasets(datasets=['ECG']) # dataloader.get_dataset_names()
+    ts_index = -1
+    max_len = -1
+    for i, ts in enumerate(x):
+        if len(ts) > max_len:
+            ts_index = i
+            max_len = len(ts)
+    label = y[ts_index]
+    print(f"Time series '{fn[ts_index]}', Length: {len(label)}")
+    # label = torch.tensor([0]*150 + [1]*20 + [0]*200 + [1]*50 + [0]*250 + [1]*20 + [0]*200, dtype=torch.float32)
+    
+    fig, axes = plt.subplots(2, 1, figsize=(4, 2.5), sharex=False)
+    for i, global_mask in enumerate(global_mask_choices):
+        ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), _ = ffvus.get_anomalies_coordinates(label)
+        if global_mask:
+            safe_mask, _ = ffvus.create_safe_mask(label, start_with_edges, end_with_edges, extra_safe=global_mask)
+            label = label[safe_mask]
+            ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), _ = ffvus.get_anomalies_coordinates(label)
+        else:
+            pass
+        labels = ffvus.add_slopes_precomputed(label, start_no_edges, end_no_edges)
+        print('Computed buffers')
+        
+        sns.lineplot(labels.T, ax=axes[i], palette='flare_r', legend=False, linewidth=1.5)
+        axes[i].set_title(f'Global mask: {global_mask}, Length: {len(label)}')
+        axes[i].set_yticks([])
+        print(f'Size reduction {(max_len / len(label)):.0f}x')
+
+    plt.tight_layout()
+    plt.savefig("experiments/figures/global_mask.svg", bbox_inches="tight")
+    plt.savefig("experiments/figures/global_mask.pdf", bbox_inches="tight")
+    plt.show()
 
 
 def steps_visualization():
     sns.set_style("whitegrid")
     
-    step_sizes = [1, 20, 100]
+    step_sizes = [1, 5, 10]
 
-    # label = torch.tensor([0]*15 + [1]*20 + [0]*40 + [1]*10 + [0]*25 + [1]*1 + [0]*20, dtype=torch.float32)
-    label = np.array([0]*100 + [1]*200 + [0]*400).astype(np.float64)    
+    label = np.array([0]*40 + [1]*20 + [0]*40).astype(np.float64)    
 
-
-    fig, axes = plt.subplots(len(step_sizes), 1, figsize=(5, 8.5), sharex=True)
+    fig, axes = plt.subplots(len(step_sizes), 1, figsize=(4, 3), sharex=True)
     for i, step in enumerate(step_sizes):
+        buffer_size = 20
         ffvus = VUSNumpy(
-            slope_size=100,
-            step=1
+            slope_size=buffer_size,
+            step=step
         )
         ((start_points, end_points), _), _ = ffvus.get_anomalies_coordinates(label)
         labels = ffvus.add_slopes_precomputed(label, start_points, end_points)
     
         sns.lineplot(labels.T, ax=axes[i], palette='flare_r', legend=False, linewidth=1.5)
+        axes[i].annotate(f'Step {step}', xy=(5, .5), xytext=(.5, .5))
+        axes[i].set_yticks([])
 
     plt.tight_layout()
     plt.savefig("experiments/figures/buffer_steps.svg", bbox_inches="tight")
@@ -273,7 +318,7 @@ def plot_existence_toy(labels, score, existence, thresholds, filename, title_suf
     ax2.set_xticklabels(['1', '.8', '.6', '.4', '.2', '0'])
     ax2.invert_yaxis()
 
-    # plt.tight_layout()
+    # plt.tight_layout()global_mask
     plt.savefig(f"experiments/figures/{filename}.svg", bbox_inches='tight')
     plt.savefig(f"experiments/figures/{filename}.pdf", bbox_inches='tight')
     # plt.show()
@@ -289,7 +334,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--plot', 
         type=str, 
-        choices=['existence_seq', 'conf_matrix', 'gpu_buffers', 'gpu_existence', 'steps'], 
+        choices=['existence_seq', 'conf_matrix', 'gpu_buffers', 'gpu_existence', 'steps', 'global_mask'], 
         default='existence_seq', 
         help='Type of plot to generate'
     )
