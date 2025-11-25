@@ -74,8 +74,8 @@ def global_mask_visualization():
         print(f'Size reduction {(max_len / len(label)):.0f}x')
 
     plt.tight_layout()
-    plt.savefig("experiments/figures/global_mask.svg", bbox_inches="tight")
-    plt.savefig("experiments/figures/global_mask.pdf", bbox_inches="tight")
+    plt.savefig("experiments/figures/global_mask.svg", bbox_inches="tight", pad_inches=0)
+    plt.savefig("experiments/figures/global_mask.pdf", bbox_inches="tight", pad_inches=0)
     plt.show()
 
 
@@ -101,8 +101,8 @@ def steps_visualization():
         axes[i].set_yticks([])
 
     plt.tight_layout()
-    plt.savefig("experiments/figures/buffer_steps.svg", bbox_inches="tight")
-    plt.savefig("experiments/figures/buffer_steps.pdf", bbox_inches="tight")
+    plt.savefig("experiments/figures/buffer_steps.svg", bbox_inches="tight", pad_inches=0)
+    plt.savefig("experiments/figures/buffer_steps.pdf", bbox_inches="tight", pad_inches=0)
     plt.show()
 
 
@@ -148,7 +148,7 @@ def gpu_existence_visualization():
     n_anomalies_found = total_anomalies - n_anomalies_not_found                         
     
     # --- Visualization ---
-    fig, axes = plt.subplots(5, 1, figsize=(5, 8.5), sharex=True)
+    fig, axes = plt.subplots(5, 1, figsize=(5, 6), sharex=True)
     
     # (a) Label and buffered label
     axes[0].plot(labels[-1], color="black", lw=2.5, label=f"Buffered label (L={buffer_size})")
@@ -181,33 +181,34 @@ def gpu_existence_visualization():
     axes[4].set_xlabel("Time")
 
     plt.tight_layout()
-    plt.savefig("experiments/figures/gpu_existence.svg", bbox_inches="tight")
-    plt.savefig("experiments/figures/gpu_existence.pdf", bbox_inches="tight")
+    plt.savefig("experiments/figures/gpu_existence.svg", bbox_inches="tight", pad_inches=0)
+    plt.savefig("experiments/figures/gpu_existence.pdf", bbox_inches="tight", pad_inches=0)
     plt.show()
 
     
 def gpu_buffers_visualization():
     sns.set_style("whitegrid")
-    buffer_size = 10
-    ffvus = VUSTorch(buffer_size)
+    buffer_size = 100
+    ffvus = VUSTorch(buffer_size, step=10)
 
-    label = torch.tensor([0]*15 + [1]*20 + [0]*25 + [1]*10 + [0]*5 + [1]*1 + [0]*20, dtype=torch.float32)
+    label = torch.tensor([0]*150 + [1]*200 + [0]*250 + [1]*100 + [0]*100 + [1]*10 + [0]*200, dtype=torch.float32)
     T = label.shape[0]
     
     (_, (start_points, end_points)), _ = ffvus.get_anomalies_coordinates(label)
     pos, _ = ffvus.distance_from_anomaly(label, start_points, end_points)
     labels, _ = ffvus.add_slopes(label, pos)
 
-    fig, ax = plt.subplots(3, 1, sharex=True, figsize=(5, 3.5))
+    fig, ax = plt.subplots(3, 1, sharex=True, figsize=(5, 2.5))
 
     ax[0].plot(label, color='k', linewidth=2.5)
-    ax[0].set_title('Label')
+    # ax[0].set_title('Label')
     ax[1].plot(pos, color='k', linewidth=2.5)
-    ax[1].set_title('Position sequence')
-    ax[1].fill_between(range(T), 0, 20, where=pos > buffer_size, color="lightskyblue", alpha=0.8, label="Not affected regions")
-    ax[1].fill_between(range(T), 0, 20, where=label, color="pink", alpha=0.8, label="Original anomaly")
+    # ax[1].set_title('Position sequence')
+    ax[1].fill_between(range(T), 0, 200, where=pos >= buffer_size, color="pink", alpha=0.8, label="Not affected regions")
+    ax[1].fill_between(range(T), 0, 200, where=label, color="pink", alpha=0.8, label="Original anomaly")
+    ax[1].fill_between(range(T), 0, 200, where=np.logical_and(pos < buffer_size, np.logical_not(label)), color="lightgreen", alpha=0.8, label="Buffers")
     sns.lineplot(labels.T, ax=ax[2], palette='flare_r', legend=False, linewidth=1.5)
-    ax[2].set_title('Label with 10 buffers')
+    # ax[2].set_title('Label with 10 buffers')
 
     # tmp = 1 - (((1 - ffvus.zita) * pos) / buffer_size)
     # tmp[label == 1] = 1
@@ -215,13 +216,14 @@ def gpu_buffers_visualization():
     # ax[3].plot(tmp)
     
     plt.tight_layout()
-    plt.savefig("experiments/figures/gpu_buffers.svg", bbox_inches="tight")
-    plt.savefig("experiments/figures/gpu_buffers.pdf", bbox_inches="tight")
+    plt.savefig("experiments/figures/gpu_buffers.svg", bbox_inches="tight", pad_inches=0)
+    plt.savefig("experiments/figures/gpu_buffers.pdf", bbox_inches="tight", pad_inches=0)
     plt.show()
 
 def confusion_matrix_visualization():
     sns.set_style("whitegrid")
-    ffvus = VUSNumpy(50)
+    buffer_length = 50
+    ffvus = VUSNumpy(buffer_length)
 
     label = np.array([0]*100 + [1]*200 + [0]*400).astype(np.float64)
     ((start_points, end_points), _), _ = ffvus.get_anomalies_coordinates(label)
@@ -229,33 +231,39 @@ def confusion_matrix_visualization():
     T = label.shape[0]
     
     score = np.zeros_like(label, dtype=float)
-    score[200:400] = 1
-    # score += np.random.uniform(0, .2, score.shape[0])
+    score += np.random.uniform(0, .1, score.shape[0])
+    score[200:400] += .7
     thresholds = np.linspace(1, 0, 11).round(2)
     sm, _ = ffvus.get_score_mask(score, thresholds)
     t = 0.6
 
-    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(5, 3.5))
+    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(4.5, 2.5))
 
     ax[0].plot(labels[-1], color='k', linewidth=2.5)
-    ax[0].fill_between(range(T), 0, 1, where=labels[-1] == 0, color="lightskyblue", alpha=0.5, label="Non-anomalous region")
+    ax[0].fill_between(range(T), 0, 1, where=labels[-1] == 0, color="lightskyblue", alpha=0.5, label="Non-anomalous")
     ax[0].fill_between(range(T), 0, 1, where=labels[-1] == 1, color="pink", alpha=0.5, label="Original anomaly")
     ax[0].fill_between(range(T), 0, 1, where=np.logical_and(labels[-1] < 1, labels[-1] > 0), color="purple", alpha=0.5, label="Buffer region")
-    ax[0].set_title('Label with buffer L\'')
+    # ax[0].set_title(f'Label with buffer {buffer_length}')
+    ax[0].set_ylabel('Label')
+    ax[0].set_yticks([])
     ax[0].legend()
 
     ax[1].plot(score, color='k', linewidth=2.5)
-    ax[1].fill_between(range(T), 0, 1, where=np.logical_and(np.logical_and(score > t, labels[-1]), label == 1), color="lightgreen", alpha=0.5, label="TP; O(t, T)")
-    ax[1].fill_between(range(T), 0, 1, where=np.logical_and(np.logical_and(score > t, labels[-1]), labels[-1] < 1), color="darkgreen", alpha=0.5, label="TP; O(t, L, T)")
-    ax[1].fill_between(range(T), 0, 1, where=np.logical_and(score == 1, labels[-1]  == 0), color="red", alpha=0.5, label="FP; O(t, T)")
-    ax[1].fill_between(range(T), 0, 1, where=np.logical_and(score == 0, label == 1), color="orange", alpha=0.5, label="FN; O(t, T)")
+    ax[1].hlines(y=t, xmin=0, xmax=len(label), lw=2.5, color='red', linestyle='--', label='threshold')
+    ax[1].fill_between(range(T), 0, 1, where=np.logical_and(np.logical_and(score > t, labels[-1]), label == 1), color="lightgreen", alpha=0.5, label="$TP_{initial}$")
+    ax[1].fill_between(range(T), 0, 1, where=np.logical_and(np.logical_and(score > t, labels[-1]), labels[-1] < 1), color="darkgreen", alpha=0.5, label="$TP_{buffer}$")
+    # ax[1].fill_between(range(T), 0, 1, where=np.logical_and(score == 1, labels[-1]  == 0), color="red", alpha=0.5, label="FP; O(t, T)")
+    # ax[1].fill_between(range(T), 0, 1, where=np.logical_and(score == 0, label == 1), color="orange", alpha=0.5, label="FN; O(t, T)")
     ax[1].set_xlabel('Time')
-    ax[1].set_title('Score of threshold t\'')
+    # ax[1].set_xticks([])
+    # ax[1].set_title('Score of threshold t\'')
+    ax[1].set_ylabel('Score')
+    ax[1].set_yticks([])
     ax[1].legend()
     
     plt.tight_layout()
-    plt.savefig("experiments/figures/conf_matrix_mask.svg", bbox_inches="tight")
-    plt.savefig("experiments/figures/conf_matrix_mask.pdf", bbox_inches="tight")
+    plt.savefig("experiments/figures/conf_matrix_mask.svg", bbox_inches="tight", pad_inches=0)
+    plt.savefig("experiments/figures/conf_matrix_mask.pdf", bbox_inches="tight", pad_inches=0)
     plt.show()
 
 
