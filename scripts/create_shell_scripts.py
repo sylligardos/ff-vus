@@ -47,7 +47,7 @@ experiments = {
         "template": None,
         "args": {
             "dataset": ['syn_0', 'syn_1', 'syn_2', 'syn_3', 'syn_4', 'syn_5', 'syn_6', 'syn_7', 'syn_8', 'syn_9'],
-            "metric": ['ff_vus', 'rf', 'affiliation', 'range_auc', 'auc', 'vus', 'ff_vus_gpu']
+            "metric": ['ff_vus_gpu'] # 'ff_vus', 'rf', 'affiliation', 'range_auc', 'auc', 'vus', 
         },
         "rules": []
     },
@@ -104,7 +104,7 @@ experiments = {
 
 def create_shell_scripts(experiment_name):
     parent_dir = "scripts"
-    experiment_name = "vus_ffvus_auc_0_tsb"  # ["allmetrics_defparams_tsb", "allmetrics_defparams_syn", "vus_buffer_comparison_tsb", "vus_step_comparison_tsb", "vus_ffvus_auc_0_tsb"]
+    experiment_name = "allmetrics_defparams_syn"  # ["allmetrics_defparams_tsb", "allmetrics_defparams_syn", "vus_buffer_comparison_tsb", "vus_step_comparison_tsb", "vus_ffvus_auc_0_tsb"]
 
     logs_saving_dir = os.path.join("experiments", experiment_name)
     os.makedirs(logs_saving_dir, exist_ok=True)

@@ -111,17 +111,17 @@ def compute_metric(
     return pd.DataFrame(results)
 
 def compute_metric_over_dataset(
-    dataset,
-    metric,
-    global_mask=True,
-    slope_size=100,
-    step=1,
-    slopes='precomputed',
-    existence='optimized',
-    conf_matrix='dynamic',
-    testing=False,
-    experiment_dir=None,
-):
+        dataset,
+        metric,
+        global_mask=True,
+        slope_size=100,
+        step=1,
+        slopes='precomputed',
+        existence='optimized',
+        conf_matrix='dynamic',
+        testing=False,
+        experiment_dir=None,
+    ):
 
     # Load dataset
     if dataset == 'tsb':
@@ -190,7 +190,7 @@ def compute_metric_over_dataset(
                     "Confusion matrix": conf_matrix,
                     "Time": df.iloc[:, -1].sum(),
                 }])
-                info_df.to_csv(os.path.join(info_path, filename), index=False)
+                info_df.to_no_global_maskcsv(os.path.join(info_path, filename), index=False)
             if metric in ['auc', 'affiliation', 'rf']:
                 break
 
@@ -205,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, required=True, help='Path or name of the dataset')
     parser.add_argument('--metric', type=str, required=True, choices=['ff_vus', 'ff_vus_gpu', 'vus', 'rf', 'affiliation', 'range_auc', 'auc', 'all'], 
                         help='Metric to compute (e.g., VUS, AUC-PR, etc.)')
-    parser.add_argument('--global_mask', action='store_true', help='Use global mask for metric computation')
+    parser.add_argument('--no_global_mask', action='store_true', help='Use global mask for metric computation')
     parser.add_argument('--slope_size', type=int, default=128, help='Number of slopes used for computation')
     parser.add_argument('--step', type=int, default=1, help='Step size between slopes')
     parser.add_argument('--slopes', type=str, choices=['precomputed', 'function'], default='precomputed',
@@ -231,7 +231,7 @@ if __name__ == "__main__":
         compute_metric_over_dataset(
             dataset=dataset,
             metric=args.metric,
-            global_mask=args.global_mask, 
+            global_mask=not args.no_global_mask, 
             slope_size=args.slope_size,
             step=args.step,
             slopes=args.slopes,
