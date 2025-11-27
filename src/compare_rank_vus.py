@@ -24,7 +24,7 @@ def compare_rank(
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        n_timeseries = 10
+        n_timeseries = 1
         labels = labels[:n_timeseries]
         filenames = filenames[:n_timeseries]
 
@@ -57,21 +57,22 @@ def compare_rank(
     for i, (filename, label, scores) in tqdm(enumerate(zip(filenames, labels, all_scores)), desc=f'Comparing rank'):
         for detector, score in zip(detectors, scores.T):
             for step in step_sizes:
-                curr_ffvus, curr_ffvus_time = ffvus[step].compute(label, score)
-                curr_ffvusgpu, curr_ffvusgpu_time = ffvusgpu[step].compute(torch.tensor(label, device=device, dtype=torch.uint8), torch.tensor(score, device=device, dtype=torch.float16))
+                (curr_ffvus, _), curr_ffvus_time = ffvus[step].compute(label, score)
+                (curr_ffvusgpu, _), curr_ffvusgpu_time = ffvusgpu[step].compute(torch.tensor(label, device=device, dtype=torch.uint8), torch.tensor(score, device=device, dtype=torch.float16))
                 results.append({'Time series': filename, 'Metric': 'FF-VUS', 'Step': step, 'Detector': detector, 'Score': curr_ffvus, 'Runtime': curr_ffvus_time})
-                results.append({'Time series': filename, 'Metric': 'FF-VUS-GPU', 'Step': step, 'Detector': detector, 'Score': curr_ffvusgpu, 'Runtime': curr_ffvusgpu_time})
+                results.append({'Time series': filename, 'Metric': 'FF-VUS-GPU', 'Step': step, 'Detector': detector, 'Score': float(curr_ffvusgpu), 'Runtime': curr_ffvusgpu_time})
 
-            # curr_vus, curr_vus_time = sylli_get_metrics(label, score, 'vus', 512, existence=True)
-            # results.append({'Time series': filename, 'Metric': 'FF-VUS-GPU', 'Step': 1, 'Detector': detector, 'Metric value': curr_vus, 'Runtime': curr_vus_time})
+            curr_vus, curr_vus_time = sylli_get_metrics(label, score, 'vus', 512, existence=True)
+            results.append({'Time series': filename, 'Metric': 'VUS', 'Step': 1, 'Detector': detector, 'Score': curr_vus, 'Runtime': curr_vus_time})
 
-    df = pd.DataFrame(results, index='Time series')
+    df = pd.DataFrame(results)
     print(df)
 
     # Save results
     if not experiment_dir:
         experiment_dir = os.getcwd()
-
+    else:
+        experiment_dir = os.path.join('experiments', experiment_dir)
     os.makedirs(experiment_dir, exist_ok=True)
     out_path = os.path.join(experiment_dir, 'compare_rank_results.csv')
     df.to_csv(out_path)

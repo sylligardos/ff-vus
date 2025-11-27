@@ -57,7 +57,7 @@ def global_mask_visualization():
     print(f"Time series '{fn[ts_index]}', Length: {len(label)}")
     # label = torch.tensor([0]*150 + [1]*20 + [0]*200 + [1]*50 + [0]*250 + [1]*20 + [0]*200, dtype=torch.float32)
     
-    fig, axes = plt.subplots(2, 1, figsize=(5, 1.7), sharex=False)
+    fig, axes = plt.subplots(2, 1, figsize=(2.5, 1.7), sharex=False)
     for i, global_mask in enumerate(global_mask_choices):
         ((start_no_edges, end_no_edges), (start_with_edges, end_with_edges)), _ = ffvus.get_anomalies_coordinates(label)
         if global_mask:
@@ -72,6 +72,8 @@ def global_mask_visualization():
         # axes[i].set_title(f'Global mask: {global_mask}, Length: {len(label)}')
         axes[i].set_ylabel(f'{global_mask}')
         axes[i].set_yticks([])
+        if i == 0:
+            axes[i].set_xticks([0, 50000, 100000], ['0', '50k', '100k'])
         print(f'Size reduction {(max_len / len(label)):.0f}x')
     fig.text(0.01, 0.55, 'Global mask:', ha='center', va='center', rotation='vertical')
 
@@ -88,7 +90,7 @@ def steps_visualization():
 
     label = np.array([0]*50 + [1]*20 + [0]*30).astype(np.float64)    
 
-    fig, axes = plt.subplots(len(step_sizes), 1, figsize=(5, 1.7), sharex=True)
+    fig, axes = plt.subplots(len(step_sizes), 1, figsize=(2.5, 1.7), sharex=True)
     for i, step in enumerate(step_sizes):
         buffer_size = 20
         ffvus = VUSNumpy(
@@ -99,7 +101,8 @@ def steps_visualization():
         labels = ffvus.add_slopes_precomputed(label, start_points, end_points)
     
         sns.lineplot(labels.T, ax=axes[i], palette='flare_r', legend=False, linewidth=1.5)
-        axes[i].annotate(f'Buffer length {buffer_size}\nStep {step}', xy=(5, .2), xytext=(.5, .2))
+        # axes[i].annotate(f'Buffer length {buffer_size}\nStep {step}', xy=(5, .2), xytext=(.5, .2))
+        axes[i].annotate(f'Step {step}', xy=(5, .2), xytext=(.5, .2))
         axes[i].set_yticks([])
 
     plt.tight_layout()

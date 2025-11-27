@@ -192,7 +192,6 @@ class VUSTorch():
         '''
         if len(data) == 0:
             return
-        print(f"Divider used: {divider}")
         data_mem_size = data.nbytes * divider  # Around 100 thresholds 
         n_splits = np.ceil(data_mem_size / self.max_memory_tokens).astype(int)
         chunk_size = len(data) // n_splits
