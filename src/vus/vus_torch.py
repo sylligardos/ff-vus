@@ -23,9 +23,9 @@ class VUSTorch():
             slope_size=100, 
             step=1, 
             zita=(1/torch.sqrt(torch.tensor(2))), 
-            global_mask=False,
+            global_mask=True,
             existence=True,
-            conf_matrix='dynamic',
+            conf_matrix='dynamic_plus',
             device=None,
         ):
         """

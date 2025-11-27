@@ -19,19 +19,12 @@ from .scoreloader import Scoreloader
 from .dataloader import Dataloader
 
 
-def load_tsb(testing=False, dataset='KDD21', n_timeseries=10):
+def load_tsb(testing=False, dataset='KDD21', n_timeseries=10, detector=None):
     dataloader = Dataloader(raw_data_path='data/raw')
     datasets = [dataset] if testing else dataloader.get_dataset_names()
     _, labels, filenames = dataloader.load_raw_datasets(datasets)
     
     if testing:
-        # problematic_timeseries_indexes = []
-        # idx_inter = []
-        # for i, file in enumerate(filenames):
-        #     if file in problematic_timeseries_indexes:
-        #         idx_inter.append(i)
-        # filenames = [filenames[x] for x in idx_inter]
-        # labels = [labels[x] for x in idx_inter]
         labels = labels[:n_timeseries]
         filenames = filenames[:n_timeseries]
 
@@ -42,10 +35,10 @@ def load_tsb(testing=False, dataset='KDD21', n_timeseries=10):
     if len(scores) != len(labels) or len(scores) != len(filenames):
         raise ValueError(f'Size of scores and labels is not the same, scores: {len(scores)}, labels: {len(labels)}, filenames: {len(filenames)}')
 
-    detectors_idx = np.zeros(len(labels)).astype(int)
-    scores = [score[:, idx] for score, idx in zip(scores, detectors_idx)]
-
-    detectors_selected = [detectors[idx] for idx in detectors_idx]
+    if detector is None:
+        detectors_idx = np.zeros(len(labels)).astype(int)
+        scores = [score[:, idx] for score, idx in zip(scores, detectors_idx)]
+        detectors_selected = [detectors[idx] for idx in detectors_idx]
 
     return filenames, labels, scores, detectors_selected
 
