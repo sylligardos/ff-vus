@@ -21,10 +21,10 @@ class VUSNumpy():
             slope_size=100, 
             step=1, 
             zita=(1/math.sqrt(2)),
-            global_mask=False, 
+            global_mask=True, 
             slopes='precomputed',
             existence='optimized',
-            conf_matrix='dynamic',
+            conf_matrix='dynamic_plus',
             interpolation='stepwise',
             metric='vus_pr'
         ):
