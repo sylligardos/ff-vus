@@ -234,7 +234,7 @@ def confusion_matrix_visualization():
     sm, _ = ffvus.get_score_mask(score, thresholds)
     t = 0.6
 
-    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(4.5, 2.5))
+    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(4.5, 2.2))
 
     ax[0].plot(labels[-1], color='k', linewidth=2.5)
     ax[0].fill_between(range(T), 0, 1, where=labels[-1] == 0, color="lightskyblue", alpha=0.5, label="Non-anomalous")
@@ -259,7 +259,7 @@ def confusion_matrix_visualization():
     ax[1].legend()
     
     plt.tight_layout()
-    plt.savefig("experiments/figures/conf_matrix_mask.svg", bbox_inches="tight", pad_inches=0)
+    # plt.savefig("experiments/figures/conf_matrix_mask.svg", bbox_inches="tight", pad_inches=0)
     plt.savefig("experiments/figures/conf_matrix_mask.pdf", bbox_inches="tight", pad_inches=0)
     plt.show()
 
