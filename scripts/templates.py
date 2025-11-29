@@ -13,7 +13,7 @@ sh_templates = {
 #SBATCH --error={}/logs/%x.log      # Error log
 #SBATCH --ntasks=1                  # Number of tasks
 #SBATCH --cpus-per-task=32          # Number of CPU cores per task
-#SBATCH --time=10:00:00             # Time limit
+#SBATCH --time=20:00:00             # Time limit
 #SBATCH -A gpr@cpu                  # Specify the account to use
 
 # go into the submission directory 
@@ -39,7 +39,7 @@ python3 {}""",
 #SBATCH --error={}/logs/%x.log      # Error log
 #SBATCH --ntasks=1                  # Number of tasks
 #SBATCH --cpus-per-task=16          # Number of CPU cores per task
-#SBATCH --time=10:00:00             # Time limit
+#SBATCH --time=20:00:00             # Time limit
 #SBATCH -A gpr@v100                 # Specify the account to use
 #SBATCH --gres=gpu:1                # Request 1 GPU
 
@@ -68,7 +68,7 @@ python3 {}""",
 #SBATCH --cpus-per-task=16              # Number of CPU cores per task
 #SBATCH --mem=128G                      # Memory per node
 #SBATCH --constraint=amd
-#SBATCH --time=10:00:00                 # Time limit hrs:min:sec
+#SBATCH --time=40:00:00                 # Time limit hrs:min:sec
 
 # Activate the conda environment
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -87,7 +87,7 @@ python3 {}""",
 #SBATCH --mem=128G                       # Memory per node
 #SBATCH --partition=gpu                 # Partition name (gpu for GPU jobs)
 #SBATCH --gres=gpu:h100:1               # Number of GPUs (1 in this case)
-#SBATCH --time=10:00:00                  # Time limit hrs:min:sec
+#SBATCH --time=20:00:00                  # Time limit hrs:min:sec
 
 # Activate the conda environment
 source ~/miniconda3/etc/profile.d/conda.sh

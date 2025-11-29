@@ -7,6 +7,7 @@
 
 from templates import sh_templates
 
+import argparse
 import itertools
 import os
 from copy import deepcopy
@@ -105,7 +106,7 @@ experiments = {
         "script_name": "src/compare_rank_vus.py",
         "template": None,
         "args": {
-            "dataset": ['SVDB', 'Genesis', 'GHL', 'SensorScope', 'ECG', 'OPPORTUNITY', 'SMD', 'KDD21', 'Daphnet', 'NAB', 'NASA-MSL', 'YAHOO', 'Dodgers', 'MITDB', 'IOPS', 'Occupancy', 'MGAB', 'NASA-SMAP'],
+            "dataset": ['SVDB', 'MITDB'],
             "metric": ['vus'],
         },
         "rules": []
@@ -124,8 +125,8 @@ experiments = {
 
 def create_shell_scripts(experiment_name):
     parent_dir = "scripts"
-    # experiment_name = "allmetrics_defparams_syn"  # ["allmetrics_defparams_tsb", "allmetrics_defparams_syn", "vus_buffer_comparison_tsb", "vus_step_comparison_tsb", "vus_ffvus_auc_0_tsb"]
-
+    # experiment_name = "compare_rank_vus"
+    
     logs_saving_dir = os.path.join("experiments", experiment_name)
     os.makedirs(logs_saving_dir, exist_ok=True)
     experiment_desc = experiments[experiment_name]
@@ -183,5 +184,14 @@ def create_shell_scripts(experiment_name):
         
 
 if __name__ == "__main__":
-    for experiment in experiments.keys():
-        create_shell_scripts(experiment_name=experiment)
+    parser = argparse.ArgumentParser(
+        prog='main',
+        description='Generate scripts for running python experiments on cluster'
+    )
+
+    parser.add_argument('--experiment', type=str, required=True, help='Which experiment to create scripts for')
+    args = parser.parse_args()
+
+    create_shell_scripts(
+        experiment_name=args.experiment
+    )
