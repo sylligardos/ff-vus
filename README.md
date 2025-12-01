@@ -1,183 +1,74 @@
 # FF-VUS
 
-**FF-VUS (Furiously Fast Volume Under Surface)** is a lightning-fast implementation of the next-generation metric for **time series anomaly detection**: **VUS-PR** — _Volume Under the Precision-Recall Surface_. This metric provides a more comprehensive view of detection performance, especially suited for tasks with **imprecise anomaly boundaries** and **gradual transitions**.
+FF-VUS provides efficient implementations of the Volume Under the Precision-Recall Surface (VUS-PR) for time series anomaly detection. This repository accompanies the paper "FF-VUS: A Freaking-Fast Evaluation Measure for Time Series Anomaly Detection" and contains the exact CPU algorithm (FF-VUS) and a fully vectorized GPU approximation (FF-VUS-GPU).
 
----
+## Summary
 
-## 🚀 Overview
+VUS-PR is a threshold-independent metric that evaluates detection quality across slope tolerances, producing a 3D precision–recall surface whose volume summarizes performance. FF-VUS removes computational bottlenecks through algorithmic optimizations and a GPU-parallel approximation, enabling practical evaluation at large scale.
 
-Traditional metrics like AUC-PR or F1-score collapse the evaluation into single values that may ignore the **spatial tolerance** needed in time series anomaly detection. VUS-PR addresses this by evaluating across different slope sizes around ground-truth anomalies, producing a **3D surface** over:
+## Key contributions
 
-- **Slope tolerance** (how much leeway we give before and after an anomaly),
-- **Precision** and **Recall** values,
-- And integrating this surface to get a scalar value.
+- FF-VUS: an exact, CPU-based algorithm that avoids redundant computations.
+- FF-VUS-GPU: a vectorized approximation exploiting GPU parallelism for massive speedups.
+- Extensive experiments on the TSB-UAD benchmark and synthetic series up to billions of points demonstrating orders-of-magnitude speed improvements.
 
-FF-VUS implements this efficiently, making it scalable for **large datasets** and **massive experiments**.
+Representative results (paper)
 
----
+- Average speed-up of FF-VUS over baseline VUS: ~111×
+- Average speed-up of FF-VUS-GPU over baseline VUS: ~467×
+- Extreme scenario: benchmark evaluation reduced from ~61 hours to ~2 minutes (>1800× improvement)
 
-## 📦 Features
+## Repository contents
 
-- ✅ Blazing fast VUS-PR computation on large-scale datasets (NumPy and GPU-accelerated Torch backends)
-- 🧠 Smart slope expansion around anomaly intervals
-- 🔁 Flexible configuration of slope size, step, and existence/confusion matrix modes
-- 🛠️ Minimal dependencies (NumPy, SciPy, Torch for GPU)
-- 📊 Generates realistic anomaly scores with noise, detection uncertainty, and false positives
-- 🧪 Synthetic data generation for benchmarking
-- 📈 Jupyter notebooks for analysis and visualization
+- src/: metric implementations, synthetic data generators, utilities
+  - src/vus/vus_numpy.py — FF-VUS (CPU)
+  - src/vus/vus_torch.py — FF-VUS-GPU (vectorized, optional)
+  - src/generate_synthetic.py — synthetic data & score generation
+  - src/utils/ — helpers for timing, I/O and plotting
+  - src/notebooks/: analysis and visualization notebooks used in the paper
+- experiments/: generated results and figures
 
----
+## Requirements & installation
 
-## 📂 Project Structure
+Python 3.12+, with (minimum):
 
-```
-ff-vus/
-├── src/
-│   ├── compute_metric.py         # Main metric computation entry point
-│   ├── generate_synthetic.py     # Synthetic data and score generation
-│   ├── vus/
-│   │   ├── vus_numpy.py          # NumPy implementation of VUS-PR
-│   │   └── vus_torch.py          # Torch (GPU) implementation of VUS-PR
-│   ├── utils/
-│   │   ├── utils.py              # Helpers for timing, labeling, plotting, etc.
-│   │   └── metricloader.py       # Metric I/O utilities
-│   └── legacy/                   # Legacy metrics and models for comparison
-├── notebooks/                    # Example and analysis notebooks
-├── data/                         # Input/output data
-├── experiments/                  # Generated results and logs
-└── README.md
-```
-
----
-
-## 🧪 Generating Synthetic Data
-
-You can simulate labeled time series data and corresponding anomaly scores using:
-
-```python
-from src.generate_synthetic import generate_synthetic_labels, generate_score_from_labels
-```
-
-Synthetic score generation includes:
-
-- **Lag and noise** injection
-- **Probabilistic detection**
-- **Gamma-shaped anomaly bumps**
-- **False positives** at controlled rates
-
-To generate a batch of synthetic datasets:
-
-```python
-from src.generate_synthetic import generate_synthetic
-
-generate_synthetic(
-    n_timeseries=10,
-    ts_length=1000,
-    n_anomalies=10,
-    avg_anomaly_length=100,
-    file_type='npy'
-)
-```
-
----
-
-## ⚙️ VUS Parameters
-
-You can control how VUS is computed with several parameters:
-
-- `slope_size`: Maximum number of time steps added before/after anomalies as tolerance.
-- `step`: Step size used when incrementing slope (must divide `slope_size`).
-- `slopes`: Slope computation mode (`'precomputed'` or `'function'`)
-- `existence`: Existence computation mode (`'optimized'`, `'matrix'`, `'trivial'`, or `'None'`)
-- `conf_matrix`: Confusion matrix computation mode (`'dynamic'`, etc.)
-
-For example:
-
-```python
-from src.vus.vus_numpy import VUSNumpy
-
-vus = VUSNumpy(slope_size=50, step=5, slopes='precomputed', existence='optimized')
-vus_value, timing = vus.compute(label, score)
-```
-
-Or for GPU acceleration:
-
-```python
-from src.vus.vus_torch import VUSTorch
-
-vus = VUSTorch(slope_size=50, step=5, device='cuda')
-vus_value, timing = vus.compute(label, score)
-```
-
----
-
-## 📈 Example Usage
-
-Generate 100 labeled time series and compute anomaly scores:
-
-```python
-from src.generate_synthetic import generate_synthetic_labels, generate_score_from_labels
-
-n_labels = 100
-length = 10_000
-labels = []
-scores = []
-for _ in range(n_labels):
-    label, start_points, end_points = generate_synthetic_labels(length, n_anomalies=10, avg_anomaly_length=100)
-    score = generate_score_from_labels(label, start_points, end_points)
-    labels.append(label)
-    scores.append(score)
-```
-
-Compute VUS:
-
-```python
-from src.vus.vus_numpy import VUSNumpy
-
-vus = VUSNumpy(slope_size=50, step=5)
-vus_values = [vus.compute(label, score)[0] for label, score in zip(labels, scores)]
-```
-
----
-
-## 📌 Requirements
-
-- Python 3.8+
-- NumPy
-- SciPy
-- tqdm (optional, for progress bars)
+- numpy, scipy, tqdm
+- matplotlib, seaborn (optional, for plotting)
 - torch (optional, for GPU acceleration)
-- seaborn, matplotlib (for plotting/visualization)
 
-Install dependencies:
+Install:
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
+## Minimal usage
 
-## 📤 Output
+Compute VUS (CPU):
 
-All generated labels, scores, and VUS values are saved under the `experiments/` directory with filenames encoding the parameter setup.
+```python
+from src.vus.vus_numpy import VUSNumpy
+vus = VUSNumpy(slope_size=50, step=5)
+value, timing = vus.compute(label, score)
+```
 
----
+Compute VUS (GPU, optional):
 
-## 💡 Naming
+```python
+from src.vus.vus_torch import VUSTorch
+vus = VUSTorch(slope_size=50, step=5, device='cuda')
+value, timing = vus.compute(label, score)
+```
 
-Yes, FF-VUS stands for _Furiously Fast VUS_. But also... **Freaking Fast**, because we can 😎
+## Experiments
 
----
+Notebooks under src/notebooks reproduce figures and runtime analyses reported in the paper. Results and plotting scripts save outputs to experiments/figures/.
 
-## 🧑‍💻 Authors
+## Citation
 
-- **Emmanouil Sylligardos** – PhD Researcher @ École Normale Supérieure
-- **Paul Boniol** – Researcher @ Inria, École Normale Supérieure
-- **John Paparrizos** - Prof. @ The Ohio State University
-- **Pierre Senellart** - Prof. @ École Normale Supérieure
+If you use this work, please cite the paper: "FF-VUS: A Freaking-Fast Evaluation Measure for Time Series Anomaly Detection."
 
----
+## Authors & License
 
-## 📜 License
-
-MIT License – do whatever you want, just don't forget to cite us if it helps you!
+Authors: Emmanouil Sylligardos, Paul Boniol, John Paparrizos, Pierre Senellart  
+License: MIT
