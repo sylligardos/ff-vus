@@ -172,7 +172,9 @@ Yes, FF-VUS stands for _Furiously Fast VUS_. But also... **Freaking Fast**, beca
 ## 🧑‍💻 Authors
 
 - **Emmanouil Sylligardos** – PhD Researcher @ École Normale Supérieure
-- **Paul Boniol** – Researcher @ École Normale Supérieure
+- **Paul Boniol** – Researcher @ Inria, École Normale Supérieure
+- **John Paparrizos** - Prof. @ The Ohio State University
+- **Pierre Senellart** - Prof. @ École Normale Supérieure
 
 ---
 
