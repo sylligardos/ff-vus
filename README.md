@@ -48,7 +48,7 @@ Compute VUS (CPU):
 
 ```python
 from src.vus.vus_numpy import VUSNumpy
-vus = VUSNumpy(slope_size=50, step=5)
+vus = VUSNumpy(slope_size=128)
 value, timing = vus.compute(label, score)
 ```
 
@@ -56,7 +56,7 @@ Compute VUS (GPU, optional):
 
 ```python
 from src.vus.vus_torch import VUSTorch
-vus = VUSTorch(slope_size=50, step=5, device='cuda')
+vus = VUSTorch(slope_size=128, device='cuda')
 value, timing = vus.compute(label, score)
 ```
 
@@ -66,7 +66,7 @@ Notebooks under src/notebooks reproduce figures and runtime analyses reported in
 
 ## Citation
 
-If you use this work, please cite the paper: "FF-VUS: A Freaking-Fast Evaluation Measure for Time Series Anomaly Detection."
+If you use this work, please cite the paper: "FF-VUS: A Freaking-Fast Evaluation Measure for Time Series Anomaly Detection." (under review)
 
 ## Authors & License
 
