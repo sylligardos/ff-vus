@@ -40,6 +40,7 @@ def compute_metric(
             slopes=slopes,
             existence=existence,
             conf_matrix=conf_matrix,
+            side='both'
         )
     elif metric == 'ff_vus_gpu':
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -125,7 +126,7 @@ def compute_metric_over_dataset(
 
     # Load dataset
     if dataset == 'tsb':
-        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='Daphnet', n_timeseries=1)
+        filenames, labels, scores, _ = load_tsb(testing=testing, dataset='YAHOO', n_timeseries=10)
         data = zip(filenames, labels, scores)
     elif 'syn_' in  dataset:
         iterator = True

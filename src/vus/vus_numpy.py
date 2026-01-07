@@ -26,7 +26,8 @@ class VUSNumpy():
             existence='optimized',
             conf_matrix='dynamic_plus',
             interpolation='stepwise',
-            metric='vus_pr'
+            metric='vus_pr',
+            side='both',
         ):
         """
         Initialize the VUSNumpy metric class.
@@ -63,6 +64,7 @@ class VUSNumpy():
         conf_matrix_args = ['trivial', 'dynamic', 'dynamic_plus']
         interpolation_args = ['linear', 'stepwise']
         metric_args = ['auc_pr', 'auc_roc', 'vus_pr', 'vus_roc', 'all']
+        side_args = ['both', 'left', 'right']
 
         # Validate and set modes
         self.add_slopes_mode = self.validate_args(slopes, slopes_args)
@@ -70,6 +72,7 @@ class VUSNumpy():
         self.conf_matrix_mode = self.validate_args(conf_matrix, conf_matrix_args)
         self.interpolation_mode = self.validate_args(interpolation, interpolation_args)
         self.metric_mode = self.validate_args(metric, metric_args)
+        self.reward_side = self.validate_args(side, side_args)
 
         # Precompute slopes
         self.prepare_precomputed_slopes()
@@ -121,6 +124,11 @@ class VUSNumpy():
         labels, time_slopes = self.add_slopes(label, start_no_edges, end_no_edges, pos)
         existence, time_existence = self.compute_existence(labels, sm, score, thresholds, start_with_edges, end_with_edges, safe_mask)
         (fp, fn, tp, positives, negatives, fpr), time_confusion = self.compute_confusion_matrix(labels, sm)
+
+        # sns.lineplot(labels.T)
+        # plt.show()
+        # exit()
+        
         
         # Add rest of FPs
         if self.global_mask:
@@ -280,18 +288,7 @@ class VUSNumpy():
 
         This function is about 5 - 10 times slower than the precomputed version on CPUs.
         The pos part requires about 10% of the total execution time.
-        
-        
-        Another potential improvement for the motivated
-        f_pos[1:, valid_mask][(slope_values - pos[:, valid_mask]) < 0] = 0
-        
-        Args:
-            label: Binary vector indicating anomaly regions (shape: [T]).
-            pos : Distance to the nearest anomaly boundary (shape: [T]).
-            
-        Returns:
-            TODO
-                """
+        """
 
         valid_mask = (self.slope_size - pos) >= 0
         slope_values = self.slope_values[1:, None]
@@ -314,17 +311,19 @@ class VUSNumpy():
         if self.n_slopes == 1:
             return result
         
-        for curr_point in start_points:
-            slope_start = max(curr_point - self.slope_size, 0)
-            slope_end = curr_point + 1  # to include it in the transformation, read desc
-            adjusted_l = slope_end - slope_start
-            result[1:, slope_start: slope_end] = np.maximum(result[1:, slope_start: slope_end], self.pos_slopes[:, -adjusted_l:])
+        if self.reward_side in ['both', 'left']:
+            for curr_point in start_points:
+                slope_start = max(curr_point - self.slope_size, 0)
+                slope_end = curr_point + 1  # to include it in the transformation, read desc
+                adjusted_l = slope_end - slope_start
+                result[1:, slope_start: slope_end] = np.maximum(result[1:, slope_start: slope_end], self.pos_slopes[:, -adjusted_l:])
             
-        for curr_point in end_points:
-            slope_start = curr_point
-            slope_end = min(curr_point + self.slope_size, len(label) - 1) + 1       # to include it in the transformation, read desc
-            adjusted_l = slope_end - slope_start
-            result[1:, slope_start: slope_end] = np.maximum(result[1:, slope_start: slope_end], self.neg_slopes[:, :adjusted_l])
+        if self.reward_side in ['both', 'right']:
+            for curr_point in end_points:
+                slope_start = curr_point
+                slope_end = min(curr_point + self.slope_size, len(label) - 1) + 1       # to include it in the transformation, read desc
+                adjusted_l = slope_end - slope_start
+                result[1:, slope_start: slope_end] = np.maximum(result[1:, slope_start: slope_end], self.neg_slopes[:, :adjusted_l])
 
         return result
     
