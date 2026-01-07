@@ -48,7 +48,18 @@ Compute VUS (CPU):
 
 ```python
 from src.vus.vus_numpy import VUSNumpy
-vus = VUSNumpy(slope_size=128)
+vus = VUSNumpy(
+  slope_size=128                    # The buffer length that we add on the left and right of the label
+  step=1,                           # The step for which we repeat the buffers, e.g. slope_size = 100 and step = 1 results to 100 buffers but if step = 5 it results to 20 buffers
+  zita=(1/math.sqrt(2)),            # The height on the y-axis at which the buffer reaches, the higher this value, the higher the reward
+  global_mask=True,                 # Optimization option which is very helpful in very long time series
+  slopes='precomputed',             # The way we compute the buffers, please leave this to the default option for every version, rest of the modes were used for cross evaluation while designing
+  existence='optimized',            # The way we compute the existence reward, same as for 'slopes'
+  conf_matrix='dynamic_plus',       # The optimization level for the matrix, same as for 'slopes'
+  interpolation='stepwise',         # We have 2 different modes for interpolating the final surface, although the default is the one we should mainly use
+  metric='vus_pr',                  # This option is not implemented yet and it won't affect anything, in the feature we may compute more measures
+  side='both',                      # The side to which we would like to add the buffers, e.g. for streaming applications, it only makes sense to add the buffers after the event not before
+)
 value, timing = vus.compute(label, score)
 ```
 
